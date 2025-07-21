@@ -76,21 +76,46 @@ class _DrugScreenState extends State<DrugScreen> with SingleTickerProviderStateM
       _saveMessage = null;
     });
     try {
-      await _firebaseService.addMedication('demo-user', {
+      // Get the current authenticated user
+      final user = _firebaseService.currentUser;
+      if (user == null) {
+        throw Exception('User not authenticated');
+      }
+      
+      // Save medication to database
+      await _firebaseService.addMedication(user.uid, {
         'name': _drugInfo!['name'] ?? '',
-        'generic_formula': _drugInfo!['generic_formula'] ?? '',
-        'uses': _drugInfo!['uses'] ?? '',
         'dosage': _drugInfo!['dosage'] ?? '',
-        'warnings': _drugInfo!['warnings'] ?? '',
-        'savedAt': DateTime.now(),
+        'frequency': 'as needed',
+        'startDate': DateTime.now(),
+        'endDate': null,
+        'instructions': _drugInfo!['warnings'] ?? '',
+        'isActive': true,
       });
+      
+      // Create a reminder for the medication (1 hour from now)
+      final reminderDateTime = DateTime.now().add(const Duration(hours: 1));
+      final reminderData = {
+        'title': 'Take ${_drugInfo!['name']}',
+        'description': 'Dosage: ${_drugInfo!['dosage'] ?? 'As prescribed'}\nUses: ${_drugInfo!['uses'] ?? 'As needed'}',
+        'type': 'medication',
+        'dateTime': reminderDateTime,
+        'frequency': 'once',
+        'isActive': true,
+        'dosage': _drugInfo!['dosage'] ?? 'As prescribed',
+        'relatedId': null,
+      };
+      
+      // Save reminder to database
+      await _firebaseService.addReminder(user.uid, reminderData);
+      
       setState(() {
-        _saveMessage = 'Medication saved!';
+        _saveMessage = 'Medication saved and reminder set!';
         _saving = false;
       });
     } catch (e) {
       setState(() {
-        _saveMessage = 'Failed to save medication.';
+        _saveMessage = 'Failed to save medication: ${e.toString()}';
         _saving = false;
       });
     }

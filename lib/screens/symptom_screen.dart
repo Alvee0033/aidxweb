@@ -96,6 +96,7 @@ class _SymptomScreenState extends State<SymptomScreen> {
         notificationService.showNotification(
           title: 'Symptom Tracking',
           body: 'New symptom recorded',
+          soundName: 'medication_reminder',
         );
         
         ScaffoldMessenger.of(context).showSnackBar(

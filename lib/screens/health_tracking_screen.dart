@@ -20,7 +20,7 @@ class _HealthTrackingScreenState extends State<HealthTrackingScreen> {
   final _formKey = GlobalKey<FormState>();
   final _valueController = TextEditingController();
   final _notesController = TextEditingController();
-  
+
   String _selectedType = 'heart_rate';
   String _selectedUnit = 'bpm';
   bool _isAddingData = false;
@@ -81,8 +81,9 @@ class _HealthTrackingScreenState extends State<HealthTrackingScreen> {
     });
 
     try {
-      final healthProvider = Provider.of<HealthProvider>(context, listen: false);
-      
+      final healthProvider =
+          Provider.of<HealthProvider>(context, listen: false);
+
       final value = double.tryParse(_valueController.text);
       if (value == null) {
         throw Exception('Invalid value');
@@ -139,7 +140,7 @@ class _HealthTrackingScreenState extends State<HealthTrackingScreen> {
       ),
       body: Consumer<HealthProvider>(
         builder: (context, healthProvider, child) {
-          if (healthProvider.status == HealthDataStatus.loading && 
+          if (healthProvider.status == HealthDataStatus.loading &&
               healthProvider.healthData.isEmpty) {
             return const Center(
               child: CircularProgressIndicator(),
@@ -183,11 +184,11 @@ class _HealthTrackingScreenState extends State<HealthTrackingScreen> {
                 // Add Health Data Section
                 _buildAddHealthDataSection(),
                 const SizedBox(height: 24),
-                
+
                 // Health Summary Section
                 _buildHealthSummarySection(healthProvider),
                 const SizedBox(height: 24),
-                
+
                 // Recent Health Data Section
                 _buildRecentHealthDataSection(healthProvider),
               ],
@@ -210,11 +211,11 @@ class _HealthTrackingScreenState extends State<HealthTrackingScreen> {
               Text(
                 'Add Health Data',
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
+                      fontWeight: FontWeight.bold,
+                    ),
               ),
               const SizedBox(height: 16),
-              
+
               // Health Type Dropdown
               DropdownButtonFormField<String>(
                 value: _selectedType,
@@ -237,7 +238,7 @@ class _HealthTrackingScreenState extends State<HealthTrackingScreen> {
                 },
               ),
               const SizedBox(height: 16),
-              
+
               // Value Input
               TextFormField(
                 controller: _valueController,
@@ -258,7 +259,7 @@ class _HealthTrackingScreenState extends State<HealthTrackingScreen> {
                 },
               ),
               const SizedBox(height: 16),
-              
+
               // Notes Input
               TextFormField(
                 controller: _notesController,
@@ -269,7 +270,7 @@ class _HealthTrackingScreenState extends State<HealthTrackingScreen> {
                 maxLines: 3,
               ),
               const SizedBox(height: 16),
-              
+
               // Add Button
               SizedBox(
                 width: double.infinity,
@@ -293,7 +294,7 @@ class _HealthTrackingScreenState extends State<HealthTrackingScreen> {
 
   Widget _buildHealthSummarySection(HealthProvider healthProvider) {
     final summary = healthProvider.healthSummary;
-    
+
     if (summary.isEmpty) {
       return const SizedBox.shrink();
     }
@@ -304,11 +305,10 @@ class _HealthTrackingScreenState extends State<HealthTrackingScreen> {
         Text(
           'Health Summary',
           style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-            fontWeight: FontWeight.bold,
-          ),
+                fontWeight: FontWeight.bold,
+              ),
         ),
         const SizedBox(height: 16),
-        
         GridView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
@@ -322,7 +322,7 @@ class _HealthTrackingScreenState extends State<HealthTrackingScreen> {
           itemBuilder: (context, index) {
             final type = summary.keys.elementAt(index);
             final data = summary[type];
-            
+
             return GlassContainer(
               child: Padding(
                 padding: const EdgeInsets.all(12),
@@ -368,7 +368,7 @@ class _HealthTrackingScreenState extends State<HealthTrackingScreen> {
 
   Widget _buildRecentHealthDataSection(HealthProvider healthProvider) {
     final recentData = healthProvider.healthData.take(10).toList();
-    
+
     if (recentData.isEmpty) {
       return const SizedBox.shrink();
     }
@@ -382,8 +382,8 @@ class _HealthTrackingScreenState extends State<HealthTrackingScreen> {
             Text(
               'Recent Health Data',
               style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
+                    fontWeight: FontWeight.bold,
+                  ),
             ),
             TextButton(
               onPressed: () {
@@ -394,7 +394,6 @@ class _HealthTrackingScreenState extends State<HealthTrackingScreen> {
           ],
         ),
         const SizedBox(height: 16),
-        
         ListView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
@@ -405,59 +404,60 @@ class _HealthTrackingScreenState extends State<HealthTrackingScreen> {
               padding: const EdgeInsets.only(bottom: 8),
               child: GlassContainer(
                 child: ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: AppColors.primaryColor.withOpacity(0.2),
-                  child: Icon(
-                    _getHealthTypeIcon(data.type),
-                    color: AppColors.primaryColor,
+                  leading: CircleAvatar(
+                    backgroundColor: AppColors.primaryColor.withOpacity(0.2),
+                    child: Icon(
+                      _getHealthTypeIcon(data.type),
+                      color: AppColors.primaryColor,
+                    ),
                   ),
-                ),
-                title: Text(_healthTypes[data.type] ?? data.type),
-                subtitle: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      DatabaseUtils.formatHealthValue(data.value, data.unit),
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
+                  title: Text(_healthTypes[data.type] ?? data.type),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        DatabaseUtils.formatHealthValue(data.value, data.unit),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
-                    ),
-                    Text(
-                      DatabaseUtils.formatTimestamp(data.timestamp),
-                      style: const TextStyle(fontSize: 12),
-                    ),
-                  ],
-                ),
-                trailing: PopupMenuButton(
-                  itemBuilder: (context) => [
-                    const PopupMenuItem(
-                      value: 'edit',
-                      child: Row(
-                        children: [
-                          Icon(Icons.edit),
-                          SizedBox(width: 8),
-                          Text('Edit'),
-                        ],
+                      Text(
+                        DatabaseUtils.formatTimestamp(data.timestamp),
+                        style: const TextStyle(fontSize: 12),
                       ),
-                    ),
-                    const PopupMenuItem(
-                      value: 'delete',
-                      child: Row(
-                        children: [
-                          Icon(Icons.delete, color: Colors.red),
-                          SizedBox(width: 8),
-                          Text('Delete', style: TextStyle(color: Colors.red)),
-                        ],
+                    ],
+                  ),
+                  trailing: PopupMenuButton(
+                    itemBuilder: (context) => [
+                      const PopupMenuItem(
+                        value: 'edit',
+                        child: Row(
+                          children: [
+                            Icon(Icons.edit),
+                            SizedBox(width: 8),
+                            Text('Edit'),
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
-                  onSelected: (value) {
-                    if (value == 'edit') {
-                      _editHealthData(data);
-                    } else if (value == 'delete') {
-                      _deleteHealthData(data);
-                    }
-                  },
+                      const PopupMenuItem(
+                        value: 'delete',
+                        child: Row(
+                          children: [
+                            Icon(Icons.delete, color: Colors.red),
+                            SizedBox(width: 8),
+                            Text('Delete', style: TextStyle(color: Colors.red)),
+                          ],
+                        ),
+                      ),
+                    ],
+                    onSelected: (value) {
+                      if (value == 'edit') {
+                        _editHealthData(data);
+                      } else if (value == 'delete') {
+                        _deleteHealthData(data);
+                      }
+                    },
+                  ),
                 ),
               ),
             );
@@ -538,7 +538,8 @@ class _HealthTrackingScreenState extends State<HealthTrackingScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Delete Health Data'),
-        content: const Text('Are you sure you want to delete this health data?'),
+        content:
+            const Text('Are you sure you want to delete this health data?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -548,7 +549,8 @@ class _HealthTrackingScreenState extends State<HealthTrackingScreen> {
             onPressed: () async {
               Navigator.pop(context);
               try {
-                final healthProvider = Provider.of<HealthProvider>(context, listen: false);
+                final healthProvider =
+                    Provider.of<HealthProvider>(context, listen: false);
                 await healthProvider.deleteHealthData(data.id!);
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
@@ -572,4 +574,4 @@ class _HealthTrackingScreenState extends State<HealthTrackingScreen> {
       ),
     );
   }
-} 
+}

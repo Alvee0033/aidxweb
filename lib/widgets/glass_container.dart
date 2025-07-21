@@ -1,6 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:medigay/utils/theme.dart';
+import 'package:aidx/utils/theme.dart';
 
 class GlassContainer extends StatelessWidget {
   final Widget child;

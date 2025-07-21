@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:medigay/utils/theme.dart';
+import 'package:aidx/utils/theme.dart';
 
 class FeatureCard extends StatelessWidget {
   final String title;

@@ -3,7 +3,7 @@ class AppConstants {
   static const String newsApiKey = "15c9a329f0244174907ceb45d6e00d32";
   
   // Development mode flag
-  static const bool isDevelopmentMode = true;
+  static const bool isDevelopmentMode = false;
   
   // Shared Preferences Keys
   static const String prefThemeMode = "theme_mode";
@@ -51,4 +51,14 @@ class AppConstants {
   static const String routeSymptomAI = "/symptom_ai";
   static const String routeNewsDetail = "/news_detail";
   static const String routeBloodDonation = "/blood-donation";
+
+  // Telegram SOS
+  // TODO: Replace with your actual bot token and chat ID
+  static const String telegramBotToken = "8031117907:AAHJ3rN334Fhjf4QtYBCDIJOgpNO8A3F89g";
+  static const String telegramChatId = "-1002835748169"; // aidx super-group
+
+  // Extra chat IDs (e.g., private DMs) that should also receive SOS
+  static const List<String> extraTelegramChatIds = [
+    "7921789120", // Alvee personal DM
+  ];
 } 

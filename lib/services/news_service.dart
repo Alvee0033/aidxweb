@@ -1,8 +1,8 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'package:medigay/models/news_model.dart';
-import 'package:medigay/utils/constants.dart';
+import 'package:aidx/models/news_model.dart';
+import 'package:aidx/utils/constants.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class NewsService {

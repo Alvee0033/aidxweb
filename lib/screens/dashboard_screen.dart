@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../services/auth_service.dart';
 import '../services/news_service.dart';
 import '../services/bluetooth_service.dart';
+import '../services/esp32_max30102_service.dart';
 import '../services/notification_service.dart';
 import '../models/news_model.dart';
 import '../utils/app_colors.dart';
@@ -14,7 +15,7 @@ import 'package:flutter_feather_icons/flutter_feather_icons.dart';
 import 'dart:async';
 import 'dart:math' as math;
 import 'package:url_launcher/url_launcher.dart';
-import 'package:medigay/screens/news_detail_screen.dart';
+import 'package:aidx/screens/news_detail_screen.dart';
 import 'dart:ui';
 
 class DashboardScreen extends StatefulWidget {
@@ -30,10 +31,18 @@ class _DashboardScreenState extends State<DashboardScreen>
   late AnimationController _ecgController;
   late Animation<double> _pulseAnimation;
   late Animation<double> _ecgAnimation;
+  // Animated gradient background
+  late AnimationController _bgController;
+  late Animation<Alignment> _bgAlignment1;
+  late Animation<Alignment> _bgAlignment2;
 
   String _selectedMood = '';
-  String _heartRate = '--';
-  String _spo2 = '--';
+  // Demo placeholders so the UI shows sample vitals even when no device is connected
+  String _heartRate = '72'; // bpm
+  String _spo2 = '98'; // %
+  String _temperature = '--';
+  String _batteryLevel = '--';
+  bool _isESP32Connected = false;
   NewsArticle? _currentNews;
   bool _isLoadingNews = false;
   List<NewsArticle> _newsPool = [];
@@ -41,6 +50,7 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   final NewsService _newsService = NewsService();
   final BluetoothService _bluetoothService = BluetoothService();
+  final ESP32MAX30102Service _esp32Service = ESP32MAX30102Service();
   final NotificationService _notificationService = NotificationService();
   
   @override
@@ -49,7 +59,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     _initializeAnimations();
     _loadUserMood();
     _loadHealthNews();
-    _startVitalsSimulation();
+    _initializeESP32Service();
     _startNewsRotation();
   }
 
@@ -71,6 +81,20 @@ class _DashboardScreenState extends State<DashboardScreen>
       CurvedAnimation(parent: _ecgController, curve: Curves.linear),
     );
     _ecgController.repeat();
+
+    // Background gradient animation
+    _bgController = AnimationController(
+      duration: const Duration(seconds: 20),
+      vsync: this,
+    )..repeat(reverse: true);
+    _bgAlignment1 = AlignmentTween(
+      begin: Alignment.topLeft,
+      end: Alignment.topRight,
+    ).animate(CurvedAnimation(parent: _bgController, curve: Curves.easeInOut));
+    _bgAlignment2 = AlignmentTween(
+      begin: Alignment.bottomRight,
+      end: Alignment.bottomLeft,
+    ).animate(CurvedAnimation(parent: _bgController, curve: Curves.easeInOut));
   }
 
   Future<void> _loadUserMood() async {
@@ -185,12 +209,58 @@ class _DashboardScreenState extends State<DashboardScreen>
     });
   }
   
-  void _startVitalsSimulation() {
-    Timer.periodic(const Duration(seconds: 3), (timer) {
+  void _initializeESP32Service() async {
+    await _esp32Service.init();
+    
+    // Listen to ESP32 connection state
+    _esp32Service.connectionStateStream.listen((isConnected) {
       if (mounted) {
-    setState(() {
-          _heartRate = (70 + math.Random().nextInt(30)).toString();
-          _spo2 = (95 + math.Random().nextInt(5)).toString();
+        setState(() {
+          _isESP32Connected = isConnected;
+          // Reset values when disconnected
+          if (!isConnected) {
+            // Re-apply demo placeholders when device disconnects
+            _heartRate = '72';
+            _spo2 = '98';
+            _temperature = '--';
+            _batteryLevel = '--';
+          }
+        });
+      }
+    });
+    
+    // Listen to heart rate updates
+    _esp32Service.heartRateStream.listen((heartRate) {
+      if (mounted && heartRate > 0) {
+        setState(() {
+          _heartRate = heartRate.toString();
+        });
+      }
+    });
+    
+    // Listen to SpO2 updates
+    _esp32Service.spo2Stream.listen((spo2) {
+      if (mounted && spo2 > 0) {
+        setState(() {
+          _spo2 = spo2.toString();
+        });
+      }
+    });
+    
+    // Listen to temperature updates
+    _esp32Service.temperatureStream.listen((temperature) {
+      if (mounted && temperature > 0) {
+        setState(() {
+          _temperature = temperature.toStringAsFixed(1);
+        });
+      }
+    });
+    
+    // Listen to battery updates
+    _esp32Service.batteryStream.listen((battery) {
+      if (mounted && battery > 0) {
+        setState(() {
+          _batteryLevel = battery.toString();
         });
       }
     });
@@ -201,6 +271,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     _pulseController.dispose();
     _ecgController.dispose();
     _newsRotationTimer?.cancel();
+    _bgController.dispose();
     super.dispose();
   }
 
@@ -231,7 +302,7 @@ class _DashboardScreenState extends State<DashboardScreen>
             ),
             const SizedBox(width: 12),
             const Text(
-              'MediGay',
+              'AidX',
               style: TextStyle(
                 fontSize: 22,
                 fontWeight: FontWeight.bold,
@@ -282,11 +353,10 @@ class _DashboardScreenState extends State<DashboardScreen>
           ),
         ],
       ),
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: AppTheme.bgGradient,
-        ),
-        child: SafeArea(
+      body: Stack(
+        children: [
+          _buildAnimatedBackground(),
+          SafeArea(
           child: CustomScrollView(
             slivers: [
               SliverToBoxAdapter(
@@ -320,6 +390,7 @@ class _DashboardScreenState extends State<DashboardScreen>
             ],
           ),
         ),
+        ],
       ),
     );
   }
@@ -413,29 +484,44 @@ class _DashboardScreenState extends State<DashboardScreen>
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Live Vitals',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white,
-                        letterSpacing: 0.3,
-                        fontFamily: 'Montserrat',
-                      ),
+                    Row(
+                      children: [
+                        const Text(
+                          'Live Vitals',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                            letterSpacing: 0.3,
+                            fontFamily: 'Montserrat',
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Container(
+                          width: 6,
+                          height: 6,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: _isESP32Connected ? AppTheme.successColor : AppTheme.dangerColor,
+                          ),
+                        ),
+                      ],
                     ),
                     Container(
                       margin: const EdgeInsets.only(top: 2),
                       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1),
                       decoration: BoxDecoration(
-                        color: AppTheme.successColor.withOpacity(0.16),
+                        color: _isESP32Connected 
+                            ? AppTheme.successColor.withOpacity(0.16)
+                            : AppTheme.dangerColor.withOpacity(0.16),
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: Text(
-                        'Real-time',
+                        _isESP32Connected ? 'ESP32 Connected' : 'No Device',
                         style: TextStyle(
                           fontSize: 8,
                           fontWeight: FontWeight.w600,
-                          color: AppTheme.successColor,
+                          color: _isESP32Connected ? AppTheme.successColor : AppTheme.dangerColor,
                           fontFamily: 'Montserrat',
                         ),
                       ),
@@ -560,6 +646,192 @@ class _DashboardScreenState extends State<DashboardScreen>
                     ],
                   ),
                 ),
+                // Divider
+                Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 10),
+                  width: 1.2,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.13),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                // Temperature Pill
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [AppTheme.warningColor.withOpacity(0.18), Colors.white.withOpacity(0.08)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppTheme.warningColor.withOpacity(0.10),
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(1.5),
+                        decoration: BoxDecoration(
+                          color: AppTheme.warningColor.withOpacity(0.18),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Icon(FeatherIcons.thermometer, size: 8, color: AppTheme.warningColor),
+                      ),
+                      const SizedBox(width: 3),
+                      Text(
+                        _temperature,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: AppTheme.warningColor,
+                          fontFamily: 'Montserrat',
+                        ),
+                      ),
+                      const SizedBox(width: 2),
+                      Text(
+                        '°C',
+                        style: TextStyle(
+                          fontSize: 7,
+                          color: AppTheme.warningColor.withOpacity(0.7),
+                          fontWeight: FontWeight.w600,
+                          fontFamily: 'Montserrat',
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                // Divider
+                Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 10),
+                  width: 1.2,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.13),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                // Battery Pill
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [AppTheme.infoColor.withOpacity(0.18), Colors.white.withOpacity(0.08)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppTheme.infoColor.withOpacity(0.10),
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(1.5),
+                        decoration: BoxDecoration(
+                          color: AppTheme.infoColor.withOpacity(0.18),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Icon(FeatherIcons.battery, size: 8, color: AppTheme.infoColor),
+                      ),
+                      const SizedBox(width: 3),
+                      Text(
+                        _batteryLevel,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: AppTheme.infoColor,
+                          fontFamily: 'Montserrat',
+                        ),
+                      ),
+                      const SizedBox(width: 2),
+                      Text(
+                        '%',
+                        style: TextStyle(
+                          fontSize: 7,
+                          color: AppTheme.infoColor.withOpacity(0.7),
+                          fontWeight: FontWeight.w600,
+                          fontFamily: 'Montserrat',
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                // Scan button when not connected
+                if (!_isESP32Connected) ...[
+                  // Divider
+                  Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 10),
+                    width: 1.2,
+                    height: 28,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.13),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  // Scan Button
+                  GestureDetector(
+                    onTap: () {
+                      _esp32Service.startScan();
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: const Text('Scanning for ESP32 Smart Band...'),
+                          backgroundColor: AppTheme.infoColor,
+                          duration: const Duration(seconds: 2),
+                        ),
+                      );
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [AppTheme.infoColor.withOpacity(0.18), Colors.white.withOpacity(0.08)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppTheme.infoColor.withOpacity(0.10),
+                            blurRadius: 6,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.bluetooth_searching,
+                            size: 10,
+                            color: AppTheme.infoColor,
+                          ),
+                          const SizedBox(width: 3),
+                          Text(
+                            'Scan',
+                            style: TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.infoColor,
+                              fontFamily: 'Montserrat',
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -1097,6 +1369,58 @@ class _DashboardScreenState extends State<DashboardScreen>
             ),
             Row(
               children: [
+                // View Full Article Button
+                GestureDetector(
+                  onTap: _currentNews != null
+                      ? () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => NewsDetailScreen(article: _currentNews!),
+                            ),
+                          );
+                        }
+                      : null,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [AppTheme.primaryColor.withOpacity(0.18), Colors.white.withOpacity(0.08)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppTheme.primaryColor.withOpacity(0.10),
+                          blurRadius: 4,
+                          offset: const Offset(0, 1),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.article,
+                          size: 10,
+                          color: AppTheme.primaryColor,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          'View Full',
+                          style: TextStyle(
+                            fontSize: 8,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.primaryColor,
+                            fontFamily: 'Montserrat',
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 6),
                 // Reload Button
                 GestureDetector(
                   onTap: _isLoadingNews ? null : () => _loadHealthNews(force: true),
@@ -1181,6 +1505,27 @@ class _DashboardScreenState extends State<DashboardScreen>
           ),
         ),
       ),
+    );
+  }
+
+  // Animated background widget
+  Widget _buildAnimatedBackground() {
+    return AnimatedBuilder(
+      animation: _bgController,
+      builder: (context, child) {
+        return Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: _bgAlignment1.value,
+              end: _bgAlignment2.value,
+              colors: [
+                AppTheme.bgMedium,
+                AppTheme.bgDark,
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }

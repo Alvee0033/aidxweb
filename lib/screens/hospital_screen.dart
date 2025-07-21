@@ -6,6 +6,7 @@ import 'dart:convert';
 import 'dart:math';
 import '../utils/theme.dart';
 import '../utils/constants.dart';
+import '../widgets/hospital_card.dart';
 import 'package:flutter_feather_icons/flutter_feather_icons.dart';
 
 class HospitalScreen extends StatefulWidget {
@@ -35,29 +36,36 @@ class _HospitalScreenState extends State<HospitalScreen> {
     return degrees * pi / 180;
   }
 
-  // Get coordinates using browser geolocation or IP geolocation
-  Future<Map<String, double>> _getCoordinates() async {
-    // Try browser geolocation first
+  // Get coordinates using both live GPS location and IP geolocation
+  Future<Map<String, dynamic>> _getCoordinates() async {
+    Map<String, double>? gpsLocation;
+    Map<String, double>? ipLocation;
+    String locationSource = '';
+    
+    // Try GPS location first (most accurate)
     try {
-      print('Trying browser geolocation...');
+      print('Trying GPS location...');
         final position = await Geolocator.getCurrentPosition(
           desiredAccuracy: LocationAccuracy.high,
-        timeLimit: const Duration(seconds: 10),
+        timeLimit: const Duration(seconds: 15),
       );
-      print('Browser geolocation successful: ${position.latitude}, ${position.longitude}');
-      return {
+      gpsLocation = {
         'lat': position.latitude,
         'lon': position.longitude,
       };
+      print('GPS location successful: ${position.latitude}, ${position.longitude}');
+      locationSource = 'GPS';
     } catch (e) {
-      print('Browser geolocation failed: $e');
+      print('GPS location failed: $e');
     }
 
-    // Fallback to IP geolocation with multiple services
+    // Always try IP geolocation as backup or for additional context
+    try {
+      print('Trying IP geolocation...');
     final ipServices = [
       'https://ipapi.co/json/',
       'https://ipinfo.io/json',
-      'https://api.ipify.org?format=json',
+        'https://api.myip.com/api/v1/ip',
     ];
 
     for (final service in ipServices) {
@@ -69,7 +77,7 @@ class _HospitalScreenState extends State<HospitalScreen> {
             'Accept': 'application/json',
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
           },
-        ).timeout(const Duration(seconds: 10));
+          ).timeout(const Duration(seconds: 8));
         
         if (response.statusCode == 200) {
           final data = json.decode(response.body);
@@ -86,14 +94,15 @@ class _HospitalScreenState extends State<HospitalScreen> {
               lat = double.tryParse(loc[0]);
               lon = double.tryParse(loc[1]);
             }
-          } else if (service.contains('ipify.org')) {
-            // ipify only gives IP, not location, so skip
-            continue;
+            } else if (service.contains('myip.com')) {
+              lat = data['latitude']?.toDouble();
+              lon = data['longitude']?.toDouble();
           }
           
           if (lat != null && lon != null) {
+              ipLocation = {'lat': lat, 'lon': lon};
             print('IP geolocation successful: $lat, $lon');
-            return {'lat': lat, 'lon': lon};
+              break;
           }
         }
       } catch (e) {
@@ -101,16 +110,113 @@ class _HospitalScreenState extends State<HospitalScreen> {
         continue;
       }
     }
+    } catch (e) {
+      print('IP geolocation completely failed: $e');
+    }
 
-    // If all else fails, use a default location (you can change this to a major city)
+    // Determine which location to use
+    if (gpsLocation != null) {
+      // GPS is available - use it as primary, IP as backup info
+      return {
+        'lat': gpsLocation['lat']!,
+        'lon': gpsLocation['lon']!,
+        'source': 'GPS',
+        'accuracy': 'High',
+        'ip_lat': ipLocation?['lat'],
+        'ip_lon': ipLocation?['lon'],
+        'has_backup': ipLocation != null,
+      };
+    } else if (ipLocation != null) {
+      // Only IP location available
+      return {
+        'lat': ipLocation['lat']!,
+        'lon': ipLocation['lon']!,
+        'source': 'IP',
+        'accuracy': 'Approximate',
+        'ip_lat': ipLocation['lat'],
+        'ip_lon': ipLocation['lon'],
+        'has_backup': false,
+      };
+    } else {
+      // Fallback to default location
     print('Using default location');
     return {
       'lat': 40.7128, // New York City coordinates as fallback
       'lon': -74.0060,
+        'source': 'Default',
+        'accuracy': 'Unknown',
+        'ip_lat': null,
+        'ip_lon': null,
+        'has_backup': false,
     };
+    }
       }
 
-  // Fetch hospitals from Overpass API
+  // Fallback sample hospitals
+  List<Map<String, dynamic>> _getSampleHospitals(double userLat, double userLon) {
+    // Generate sample hospitals around the user's location with more detailed contact info
+    final hospitals = [
+      {
+        'tags': {
+          'name': 'City General Hospital', 
+          'phone': '+1 (555) 123-4567',
+          'contact:phone': '+1 (555) 123-4567',
+          'contact:email': 'info@citygeneral.com',
+          'website': 'www.citygeneral.com'
+        },
+        'distance': 1200.0,
+        'center': {'lat': userLat + 0.01, 'lon': userLon + 0.01},
+      },
+      {
+        'tags': {
+          'name': 'Community Medical Center', 
+          'phone': '+1 (555) 987-6543',
+          'contact:phone': '+1 (555) 987-6543',
+          'contact:email': 'contact@communitymed.org',
+          'website': 'www.communitymed.org'
+        },
+        'distance': 2500.0,
+        'center': {'lat': userLat - 0.008, 'lon': userLon + 0.015},
+      },
+      {
+        'tags': {
+          'name': 'University Hospital', 
+          'phone': '+1 (555) 456-7890',
+          'contact:phone': '+1 (555) 456-7890',
+          'contact:email': 'info@universityhospital.edu',
+          'website': 'www.universityhospital.edu'
+        },
+        'distance': 3800.0,
+        'center': {'lat': userLat + 0.015, 'lon': userLon - 0.012},
+      },
+      {
+        'tags': {
+          'name': 'Riverside Health Clinic', 
+          'phone': '+1 (555) 789-0123',
+          'contact:phone': '+1 (555) 789-0123',
+          'contact:email': 'contact@riversidehealth.com',
+          'website': 'www.riversidehealth.com'
+        },
+        'distance': 4200.0,
+        'center': {'lat': userLat - 0.012, 'lon': userLon - 0.008},
+      },
+      {
+        'tags': {
+          'name': 'Emergency Care Center', 
+          'phone': '+1 (555) 321-6540',
+          'contact:phone': '+1 (555) 321-6540',
+          'contact:email': 'emergency@carecenters.org',
+          'website': 'www.emergencycarecenters.org'
+        },
+        'distance': 5500.0,
+        'center': {'lat': userLat + 0.018, 'lon': userLon + 0.020},
+      },
+    ];
+    
+    return hospitals;
+  }
+
+  // Modify hospital fetching to extract more contact details
   Future<List<Map<String, dynamic>>> _fetchHospitalsRadius(
       double lat, double lon, int radius) async {
     final query = '[out:json];(node["amenity"="hospital"](around:$radius,$lat,$lon);way["amenity"="hospital"](around:$radius,$lat,$lon);relation["amenity"="hospital"](around:$radius,$lat,$lon););out center 50;';
@@ -129,8 +235,37 @@ class _HospitalScreenState extends State<HospitalScreen> {
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         final hospitals = (data['elements'] as List).cast<Map<String, dynamic>>();
-        print('Found ${hospitals.length} hospitals with radius ${radius}m');
-        return hospitals;
+        
+        // Enhance hospital data with additional contact information
+        final enhancedHospitals = hospitals.map((hospital) {
+          // Combine different possible phone number tags
+          final phone = hospital['tags']?['phone'] ?? 
+                        hospital['tags']?['contact:phone'] ?? 
+                        hospital['tags']?['contact:mobile'] ?? 
+                        'No phone available';
+          
+          // Add more contact details if available
+          final email = hospital['tags']?['contact:email'] ?? 
+                        hospital['tags']?['email'] ?? 
+                        'No email available';
+          
+          final website = hospital['tags']?['website'] ?? 
+                          hospital['tags']?['contact:website'] ?? 
+                          'No website available';
+          
+          return {
+            ...hospital,
+            'tags': {
+              ...?hospital['tags'],
+              'phone': phone,
+              'contact:email': email,
+              'website': website,
+            }
+          };
+        }).toList();
+        
+        print('Found ${enhancedHospitals.length} hospitals with radius ${radius}m');
+        return enhancedHospitals;
       } else {
         print('Overpass API error: ${response.statusCode}');
         return [];
@@ -162,9 +297,21 @@ class _HospitalScreenState extends State<HospitalScreen> {
     });
     
     try {
-      final coords = await _getCoordinates();
+      final locationData = await _getCoordinates();
+      final coords = {'lat': locationData['lat'], 'lon': locationData['lon']};
+      
+      // Update status message based on location source
+      String statusMsg = 'Searching for nearby hospitals...';
+      if (locationData['source'] == 'GPS') {
+        statusMsg = 'Using GPS location (high accuracy) - searching for hospitals...';
+      } else if (locationData['source'] == 'IP') {
+        statusMsg = 'Using IP location (approximate) - searching for hospitals...';
+      } else {
+        statusMsg = 'Using default location - searching for hospitals...';
+      }
+      
       setState(() {
-        _statusMessage = 'Searching for nearby hospitals...';
+        _statusMessage = statusMsg;
       });
       
       final hospitals = await _fetchHospitals(coords['lat']!, coords['lon']!);
@@ -198,9 +345,22 @@ class _HospitalScreenState extends State<HospitalScreen> {
 
       processedHospitals.sort((a, b) => a['distance'].compareTo(b['distance']));
 
+      // Create final status message with location info
+      String finalStatus = '';
+      if (locationData['source'] == 'GPS') {
+        finalStatus = 'Found ${processedHospitals.length} hospitals using GPS location (high accuracy)';
+        if (locationData['has_backup'] == true) {
+          finalStatus += ' • IP location also available as backup';
+        }
+      } else if (locationData['source'] == 'IP') {
+        finalStatus = 'Found ${processedHospitals.length} hospitals using IP location (approximate)';
+      } else {
+        finalStatus = 'Found ${processedHospitals.length} hospitals using default location';
+      }
+
       setState(() {
-        _hospitals = processedHospitals.take(10).toList();
-        _statusMessage = '';
+        _hospitals = processedHospitals; // Show all hospitals, not just 10
+        _statusMessage = finalStatus;
       });
     } catch (e) {
       print('Error in _findHospitals: $e');
@@ -214,69 +374,7 @@ class _HospitalScreenState extends State<HospitalScreen> {
     }
   }
   
-  // Fallback sample hospitals
-  List<Map<String, dynamic>> _getSampleHospitals(double userLat, double userLon) {
-    // Generate sample hospitals around the user's location
-    final hospitals = [
-      {
-        'tags': {'name': 'City General Hospital', 'phone': '+1 (555) 123-4567'},
-        'distance': 1200.0,
-        'center': {'lat': userLat + 0.01, 'lon': userLon + 0.01},
-      },
-      {
-        'tags': {'name': 'Community Medical Center', 'phone': '+1 (555) 987-6543'},
-        'distance': 2500.0,
-        'center': {'lat': userLat - 0.008, 'lon': userLon + 0.015},
-      },
-      {
-        'tags': {'name': 'University Hospital', 'phone': '+1 (555) 456-7890'},
-        'distance': 3800.0,
-        'center': {'lat': userLat + 0.015, 'lon': userLon - 0.012},
-      },
-      {
-        'tags': {'name': 'Riverside Health Clinic', 'phone': '+1 (555) 789-0123'},
-        'distance': 4200.0,
-        'center': {'lat': userLat - 0.012, 'lon': userLon - 0.008},
-      },
-      {
-        'tags': {'name': 'Emergency Care Center', 'phone': '+1 (555) 321-6540'},
-        'distance': 5500.0,
-        'center': {'lat': userLat + 0.018, 'lon': userLon + 0.020},
-      },
-    ];
-    
-    return hospitals;
-  }
-  
-  Future<void> _launchDirections(double lat, double lon) async {
-    final url = 'https://www.google.com/maps/dir/?api=1&destination=$lat,$lon';
-    final uri = Uri.parse(url);
-    
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } else {
-      if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not launch Google Maps')),
-      );
-      }
-    }
-  }
-  
-  Future<void> _launchPhone(String phone) async {
-    final url = 'tel:$phone';
-    final uri = Uri.parse(url);
-    
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri);
-    } else {
-      if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not launch phone app')),
-      );
-      }
-    }
-  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -379,13 +477,26 @@ class _HospitalScreenState extends State<HospitalScreen> {
                 decoration: AppTheme.cardDecoration.copyWith(
                   color: AppTheme.bgGlassLight.withOpacity(0.5),
                 ),
-                child: Text(
-                  'This will use your browser location or approximate location based on your IP address to find nearby hospitals.',
-                  style: TextStyle(
-                    color: AppTheme.textSecondary,
-                    fontSize: 12,
-                  ),
-                  textAlign: TextAlign.center,
+                child: Column(
+                  children: [
+                                        Text(
+                      'This will use both GPS location (high accuracy) and IP location (backup) to find nearby hospitals. All found hospitals will be displayed.',
+                      style: TextStyle(
+                        color: AppTheme.textSecondary,
+                        fontSize: 12,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      'GPS: Most accurate • IP: Fallback option',
+                      style: TextStyle(
+                        color: AppTheme.textMuted,
+                        fontSize: 10,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
                 ),
               ),
               
@@ -436,105 +547,15 @@ class _HospitalScreenState extends State<HospitalScreen> {
             ListView.builder(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
-                        itemCount: _hospitals.length,
-                        itemBuilder: (context, index) {
-                          final hospital = _hospitals[index];
-                          final center = hospital['center'];
-                          final distance = hospital['distance'] as double;
-                          final km = (distance / 1000).toStringAsFixed(1);
-                          final name = hospital['tags']?['name'] ?? 'Unnamed Hospital';
-                          final phone = hospital['tags']?['phone'] ?? 
-                                      hospital['tags']?['contact:phone'];
-                          
-                          return Container(
-                            margin: const EdgeInsets.only(bottom: 12),
-                            padding: const EdgeInsets.all(12),
-                            decoration: AppTheme.cardDecoration.copyWith(
-                              color: AppTheme.bgGlassLight,
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                // Hospital Name
-                                Text(
-                                  name,
-                                  style: const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w600,
-                                    color: AppTheme.primaryColor,
-                                    ),
-                                  ),
-                                
-                                const SizedBox(height: 4),
-                                
-                                // Distance
-                                Text(
-                                  '$km km away',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: AppTheme.textSecondary,
-                                  ),
-                                ),
-                                
-                                // Phone Number
-                                if (phone != null) ...[
-                                  const SizedBox(height: 8),
-                                  GestureDetector(
-                                    onTap: () => _launchPhone(phone),
-                                    child: Row(
-                                            children: [
-                                              const Icon(
-                                          Icons.phone,
-                                          size: 14,
-                                          color: AppTheme.textSecondary,
-                                              ),
-                                              const SizedBox(width: 4),
-                                              Text(
-                                          phone,
-                                        style: TextStyle(
-                                            fontSize: 12,
-                                            color: AppTheme.textSecondary,
-                                            decoration: TextDecoration.underline,
-                                          ),
-                                        ),
-                                      ],
-                                        ),
-                                      ),
-                                ],
-                                
-                                      const SizedBox(height: 12),
-                                
-                                // Get Directions Button
-                                SizedBox(
-                                  width: double.infinity,
-                                  child: ElevatedButton(
-                                    onPressed: () => _launchDirections(
-                                      center['lat'].toDouble(),
-                                      center['lon'].toDouble(),
-                                    ),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: Colors.transparent,
-                                      foregroundColor: Colors.white,
-                                      padding: const EdgeInsets.symmetric(vertical: 8),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(6),
-                                            ),
-                                    ).copyWith(
-                                      backgroundColor: MaterialStateProperty.all(
-                                        AppTheme.primaryGradient.colors.first,
-                                      ),
-                                    ),
-                                    child: const Text(
-                                      'Get Directions',
-                                      style: TextStyle(fontSize: 12),
-                                              ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          );
-                        },
-                      ),
+              itemCount: _hospitals.length,
+              itemBuilder: (context, index) {
+                final hospital = _hospitals[index];
+                return HospitalCard(
+                  hospital: hospital,
+                  parentContext: context,
+                );
+              },
+            ),
             ],
           ),
         ),

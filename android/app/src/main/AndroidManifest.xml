@@ -17,11 +17,17 @@
     <!-- Camera permissions for image upload -->
     <uses-permission android:name="android.permission.CAMERA" />
     
+    <!-- Microphone permission for voice assistant -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    
+    <!-- Auto-dial emergency number -->
+    <uses-permission android:name="android.permission.CALL_PHONE" />
+    
     <!-- Feature declarations -->
     <uses-feature android:name="android.hardware.bluetooth" android:required="true" />
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
     <application
-        android:label="Medi-Gay"
+        android:label="aidx"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:enableOnBackInvokedCallback="true">

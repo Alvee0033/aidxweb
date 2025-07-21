@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:medigay/services/auth_service.dart';
-import 'package:medigay/utils/theme.dart';
-import 'package:medigay/widgets/glass_container.dart';
+import 'package:aidx/services/auth_service.dart';
+import 'package:aidx/utils/theme.dart';
+import 'package:aidx/widgets/glass_container.dart';
 import 'package:flutter_feather_icons/flutter_feather_icons.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'dart:io';
-import 'package:medigay/utils/constants.dart';
-import 'package:medigay/services/database_init.dart';
-import 'package:medigay/main.dart' show routeObserver;
+import 'package:aidx/utils/constants.dart';
+import 'package:aidx/services/database_init.dart';
+import 'package:aidx/main.dart' show routeObserver;
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});

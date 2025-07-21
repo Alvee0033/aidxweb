@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:medigay/utils/theme.dart';
+import 'package:aidx/utils/theme.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:intl/intl.dart';

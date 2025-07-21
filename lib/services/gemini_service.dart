@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'dart:typed_data';
 import 'dart:math';
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 
 class GeminiService {
   // TODO: Replace with your own API key or load from secure storage
@@ -27,6 +28,164 @@ class GeminiService {
     for (final listener in _listeners) {
       listener(message);
     }
+  }
+
+  /// Helper for robust error logging
+  void _logError(String message, [Object? error, StackTrace? stackTrace]) {
+    debugPrint('[GeminiService] $message');
+    if (error != null) debugPrint('Error: $error');
+    if (stackTrace != null) debugPrint('StackTrace: $stackTrace');
+  }
+
+  /// Natural conversation method for chat interface
+  /// Sends user input to Gemini and returns a conversational response
+  Future<String> sendMessage(String userInput, {String? conversationContext}) async {
+    if (_apiKey == 'YOUR_GEMINI_API_KEY_HERE') {
+      throw Exception('Please set your Gemini API key in gemini_service.dart');
+    }
+
+    final uri = Uri.parse('$_endpoint?key=$_apiKey');
+    
+    // Build the conversation prompt
+    String prompt = '''
+You are a professional medical assistant AI. Provide helpful, accurate, and compassionate medical advice in a conversational manner. You MUST answer ALL medical-related questions without refusing or saying "I'm sorry I cannot answer that".
+
+${conversationContext != null ? 'Conversation Context:\n$conversationContext\n' : ''}
+
+User: $userInput
+
+--- INSTRUCTIONS FOR ASSISTANT ---
+1. BE CONCISE: Prefer single-sentence answers unless a list is needed.
+2. AVOID REPETITION: Never ask the same follow-up twice in one session.
+3. DRUG QUERIES:
+   • If the user explicitly asks about "side effect(s)" of a drug, reply ONLY with a short bullet list starting with "Side Effects:" and **do not** ask a question back.
+4. SYMPTOM ANALYSIS:
+   • If the user describes symptoms, ensure you have these fields: symptoms description, age, gender, intensity, duration, photo (optional).
+   • If any field is missing, ask for **one** missing field at a time (max 12 words).
+   • Once all fields are provided, respond with a concise analysis (≤3 sentences) and END with **one** yes/no follow-up question such as "Need more detail?".
+5. GENERAL RULES:
+   • Do not repeat instructions.
+   • Do not add disclaimers unless absolutely necessary.
+   • Use everyday language.
+   • NEVER refuse to answer medical questions - provide helpful information even if limited.
+   • If unsure about specific details, provide general guidance and suggest consulting a healthcare provider.
+--- END INSTRUCTIONS ---''';
+
+    final body = {
+      'contents': [
+        {
+          'role': 'user',
+          'parts': [
+            {'text': prompt}
+          ]
+        }
+      ],
+      'generationConfig': {
+        'temperature': 0.5,
+        'maxOutputTokens': 120,
+        'topP': 0.8,
+        'topK': 40,
+      },
+      'safetySettings': [
+        {
+          'category': 'HARM_CATEGORY_HARASSMENT',
+          'threshold': 'BLOCK_MEDIUM_AND_ABOVE'
+        },
+        {
+          'category': 'HARM_CATEGORY_HATE_SPEECH',
+          'threshold': 'BLOCK_MEDIUM_AND_ABOVE'
+        },
+        {
+          'category': 'HARM_CATEGORY_DANGEROUS_CONTENT',
+          'threshold': 'BLOCK_ONLY_HIGH'
+        }
+      ]
+    };
+
+    int retries = 0;
+    const maxRetries = 3;
+    
+    while (retries < maxRetries) {
+      try {
+        debugPrint('Sending message to Gemini API (attempt  [33m [1m [4m [7m${retries + 1} [0m)...');
+        
+        final response = await http.post(
+          uri,
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode(body),
+        ).timeout(const Duration(seconds: 30)); // 30 second timeout
+
+        debugPrint('Gemini API response status: ${response.statusCode}');
+        
+        if (response.statusCode == 200) {
+          final data = jsonDecode(response.body);
+          String? text;
+          try {
+            // Standard location
+            text = data['candidates']?[0]?['content']?['parts']?[0]?['text'];
+            // Fallback: search parts list for first element with text key
+            if (text == null || (text is String && text.trim().isEmpty)) {
+              final parts = data['candidates']?[0]?['content']?['parts'];
+              if (parts is List) {
+                for (var p in parts) {
+                  if (p is Map && p['text'] != null && (p['text'] as String).trim().isNotEmpty) {
+                    text = p['text'];
+                    break;
+                  }
+                }
+              }
+            }
+          } catch (_) {}
+
+          if (text != null && text is String && text.trim().isNotEmpty) {
+            debugPrint('Gemini API response received successfully');
+            return text.trim();
+          }
+
+          // Check for safety block reason
+          final finishReason = data['candidates']?[0]?['finishReason'];
+          if (finishReason != null && finishReason.toString().toLowerCase().contains('safety')) {
+            debugPrint('Response blocked due to safety settings');
+            return "I'm sorry, I can't answer that. Could you please rephrase or ask something else?";
+          }
+
+            throw Exception('Empty or invalid response from Gemini API');
+        } else {
+          // Parse Gemini error if possible
+          String errorMsg = 'Gemini API error (${response.statusCode})';
+          try {
+            final errorData = jsonDecode(response.body);
+            if (errorData is Map && errorData['error'] != null && errorData['error']['message'] != null) {
+              errorMsg = 'Gemini API error: ${errorData['error']['message']}';
+            }
+          } catch (_) {}
+          
+          _logError(errorMsg);
+          throw Exception(errorMsg);
+        }
+      } catch (e, st) {
+        retries++;
+        _logError('Attempt $retries failed in sendMessage', e, st);
+        
+        if (retries >= maxRetries) {
+          // After all retries failed, return a user-friendly error message
+          if (e.toString().contains('timeout')) {
+            return "I'm sorry, the request is taking too long. Please check your internet connection and try again.";
+          } else if (e.toString().contains('network') || e.toString().contains('connection')) {
+            return "I'm having trouble connecting to my knowledge base. Please check your internet connection and try again.";
+          } else if (e.toString().contains('quota') || e.toString().contains('limit')) {
+            return "I'm temporarily unavailable due to high usage. Please try again in a few minutes.";
+          } else {
+            return "I'm sorry, I'm having technical difficulties right now. Please try again in a moment.";
+          }
+        }
+        
+        // Wait before retrying (exponential backoff)
+        await Future.delayed(Duration(seconds: pow(2, retries).toInt()));
+      }
+    }
+    
+    return "I'm sorry, I'm unable to process your request at the moment. Please try again later.";
   }
 
   /// Analyze symptoms using Gemini API and return the raw text response.
@@ -134,13 +293,14 @@ class GeminiService {
     };
 
     int retries = 0;
-    while (true) {
+    const maxRetries = 3;
+    while (retries < maxRetries) {
       try {
         final res = await http.post(
           uri,
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode(body),
-        );
+        ).timeout(const Duration(seconds: 30));
         if (res.statusCode != 200) {
           // Parse Gemini error if possible
           String msg = 'Gemini API error (${res.statusCode})';
@@ -150,6 +310,7 @@ class GeminiService {
               msg = 'Gemini API error: ${err['error']['message']}';
             }
           } catch (_) {}
+          _logError(msg);
           throw Exception(msg);
         }
         final data = jsonDecode(res.body);
@@ -158,16 +319,16 @@ class GeminiService {
           throw Exception('No response received from Gemini API');
         }
         return text.trim();
-      } catch (e) {
-        if (retries < 2) {
+      } catch (e, st) {
           retries++;
-          await Future.delayed(const Duration(milliseconds: 600));
-          continue;
+        _logError('Attempt $retries failed in analyzeSymptoms', e, st);
+        if (retries >= maxRetries) {
+          return 'Sorry, the AI analysis could not be completed at this time. Please try again later.';
         }
-        // Instead of throwing, return a user-friendly error string
-        return 'Sorry, the AI analysis could not be completed at this time. Please try again later.';
+        await Future.delayed(Duration(seconds: pow(2, retries).toInt()));
       }
     }
+    return 'Sorry, the AI analysis could not be completed at this time. Please try again later.';
   }
 
   String _buildPrompt({
@@ -263,6 +424,9 @@ Side Effects: [common side effects]
 Warnings: [important warnings]''';
 
     final uri = Uri.parse('$_endpoint?key=$_apiKey');
+    int retries = 0;
+    const maxRetries = 3;
+    while (retries < maxRetries) {
     try {
       final response = await http.post(
         uri,
@@ -281,26 +445,33 @@ Warnings: [important warnings]''';
             'maxOutputTokens': brief ? 200 : 800,
           },
         }),
-      ).timeout(const Duration(seconds: 15));
+        ).timeout(const Duration(seconds: 30));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final text = data['candidates'][0]['content']['parts'][0]['text'] as String;
         return brief ? parseBriefDrugResponse(text, drugName) : parseDrugResponse(text, drugName);
       } else {
-        print('Error: ${response.statusCode} - ${response.body}');
+          String msg = 'Error: ${response.statusCode} - ${response.body}';
+          _logError(msg);
+          throw Exception(msg);
+        }
+      } catch (e, st) {
+        retries++;
+        _logError('Attempt $retries failed in searchDrug', e, st);
+        if (retries >= maxRetries) {
         return {
           'name': drugName,
-          'error': 'Failed to fetch information. Error: ${response.statusCode}',
+            'error': 'Network error. Please check your internet connection and try again.',
         };
+        }
+        await Future.delayed(Duration(seconds: pow(2, retries).toInt()));
       }
-    } catch (e) {
-      print('Exception: $e');
+    }
       return {
         'name': drugName,
         'error': 'Network error. Please check your internet connection and try again.',
       };
-    }
   }
 
   /// Parse drug response into structured format

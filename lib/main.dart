@@ -1,30 +1,30 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:provider/provider.dart';
-import 'package:medigay/services/auth_service.dart';
-import 'package:medigay/services/firebase_service.dart';
-import 'package:medigay/services/database_init.dart';
-import 'package:medigay/providers/health_provider.dart';
-import 'package:medigay/services/notification_service.dart';
-import 'package:medigay/screens/splash_screen.dart';
-import 'package:medigay/utils/theme.dart';
+import 'package:aidx/services/auth_service.dart';
+import 'package:aidx/services/firebase_service.dart';
+import 'package:aidx/services/database_init.dart';
+import 'package:aidx/providers/health_provider.dart';
+import 'package:aidx/services/notification_service.dart';
+import 'package:aidx/screens/splash_screen.dart';
+import 'package:aidx/utils/theme.dart';
 import 'package:flutter/services.dart';
-import 'package:medigay/utils/constants.dart';
-import 'package:medigay/screens/dashboard_screen.dart';
-import 'package:medigay/screens/auth/login_screen.dart';
-import 'package:medigay/screens/profile_screen.dart';
-import 'package:medigay/screens/wearable_screen.dart';
-import 'package:medigay/screens/sos_screen.dart';
-import 'package:medigay/screens/drug_screen.dart';
-import 'package:medigay/screens/symptom_screen.dart';
-import 'package:medigay/screens/chat_screen.dart';
-import 'package:medigay/screens/hospital_screen.dart';
-import 'package:medigay/screens/pharmacy_screen.dart';
-import 'package:medigay/screens/professionals_pharmacy_screen.dart';
-import 'package:medigay/screens/reminder_screen.dart';
-import 'package:medigay/screens/timeline_screen.dart';
-import 'package:medigay/screens/ai_symptom_screen.dart';
-import 'package:medigay/screens/blood_donation_screen.dart';
+import 'package:aidx/utils/constants.dart';
+import 'package:aidx/screens/dashboard_screen.dart';
+import 'package:aidx/screens/auth/login_screen.dart';
+import 'package:aidx/screens/profile_screen.dart';
+import 'package:aidx/screens/wearable_screen.dart';
+import 'package:aidx/screens/sos_screen.dart';
+import 'package:aidx/screens/drug_screen.dart';
+import 'package:aidx/screens/symptom_screen.dart';
+import 'package:aidx/screens/chat_screen.dart';
+import 'package:aidx/screens/hospital_screen.dart';
+import 'package:aidx/screens/pharmacy_screen.dart';
+import 'package:aidx/screens/professionals_pharmacy_screen.dart';
+import 'package:aidx/screens/reminder_screen.dart';
+import 'package:aidx/screens/timeline_screen.dart';
+import 'package:aidx/screens/ai_symptom_screen.dart';
+import 'package:aidx/screens/blood_donation_screen.dart';
 import 'firebase_options.dart';
 import 'utils/permission_utils.dart';
 
@@ -195,7 +195,7 @@ class MyApp extends StatelessWidget {
           gradient: AppTheme.bgGradient,
         ),
         child: MaterialApp(
-          title: 'MediGay',
+          title: 'AidX',
           debugShowCheckedModeBanner: false,
           theme: AppTheme.darkTheme,
           navigatorObservers: [routeObserver],

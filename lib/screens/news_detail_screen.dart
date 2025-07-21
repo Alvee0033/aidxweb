@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:medigay/models/news_model.dart';
-import 'package:medigay/utils/theme.dart';
+import 'package:aidx/models/news_model.dart';
+import 'package:aidx/utils/theme.dart';
 import 'package:flutter_feather_icons/flutter_feather_icons.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:medigay/services/notification_service.dart';
+import 'package:aidx/services/notification_service.dart';
 
 class NewsDetailScreen extends StatelessWidget {
   final NewsArticle article;

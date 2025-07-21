@@ -1,16 +1,20 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:medigay/services/auth_service.dart';
-import 'package:medigay/services/firebase_service.dart';
-import 'package:medigay/utils/theme.dart';
-import 'package:medigay/utils/constants.dart';
-import 'package:medigay/widgets/glass_container.dart';
+import 'package:aidx/services/auth_service.dart';
+import 'package:aidx/services/firebase_service.dart';
+import 'package:aidx/utils/theme.dart';
+import 'package:aidx/utils/constants.dart';
+import 'package:aidx/widgets/glass_container.dart';
 import 'package:flutter_feather_icons/flutter_feather_icons.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:android_intent_plus/android_intent.dart';
+import 'package:aidx/services/telegram_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:just_audio/just_audio.dart';
 
 class SosScreen extends StatefulWidget {
   const SosScreen({super.key});
@@ -51,12 +55,26 @@ class _SosScreenState extends State<SosScreen> {
   // SOS Settings
   Map<String, dynamic>? _sosSettings;
   
+  final AudioPlayer _audioPlayer = AudioPlayer();
+  bool _isAlarmPlaying = false;
+  late final StreamSubscription<User?> _authSubscription;
+  
   @override
   void initState() {
     super.initState();
     _firebaseService = FirebaseService();
     _currentUserId = FirebaseAuth.instance.currentUser?.uid;
     _initializeData();
+
+    // Listen for auth changes
+    _authSubscription = FirebaseAuth.instance.authStateChanges().listen((user) {
+      if (user?.uid != _currentUserId) {
+        setState(() {
+          _currentUserId = user?.uid;
+        });
+    _initializeData();
+      }
+    });
   }
   
   Future<void> _initializeData() async {
@@ -85,8 +103,11 @@ class _SosScreenState extends State<SosScreen> {
   
   @override
   void dispose() {
+    _authSubscription.cancel();
     _countdownTimer?.cancel();
     _monitoringTimer?.cancel();
+    _stopAlarm();
+    _audioPlayer.dispose();
     _emergencyContactController.dispose();
     _emergencyNumberController.dispose();
     super.dispose();
@@ -429,8 +450,7 @@ class _SosScreenState extends State<SosScreen> {
     // In a real app, these values would come from a connected wearable
     // For demo purposes, we'll simulate random fluctuations
     setState(() {
-      _heartRate = 75 + (DateTime.now().second % 10);
-      _spo2 = 98 - (DateTime.now().second % 5);
+      
     });
     
     // Check if vitals are abnormal
@@ -486,6 +506,9 @@ class _SosScreenState extends State<SosScreen> {
     // Save SOS event to database
     _saveSosEvent('manual');
     
+    // Play loud alarm sound
+    _playAlarm();
+    
     // Start countdown
     _countdownTimer = Timer.periodic(
       const Duration(seconds: 1),
@@ -533,6 +556,9 @@ class _SosScreenState extends State<SosScreen> {
       _countdownSeconds = 30;
     });
     
+    // Stop alarm sound
+    _stopAlarm();
+    
     // Update SOS event status
     _updateSosEventStatus('cancelled');
     
@@ -564,6 +590,57 @@ class _SosScreenState extends State<SosScreen> {
   
   Future<void> _dispatchEmergency() async {
     if (!mounted) return;
+
+    // Send Telegram SOS alert
+    try {
+      final authService = Provider.of<AuthService>(context, listen: false);
+      final userName = authService.currentUser?.displayName ?? 'Unknown';
+      final locationText = _formatLocation();
+      final latitude = _currentPosition?.latitude;
+      final longitude = _currentPosition?.longitude;
+
+      // Send to default chat/group
+      await TelegramService().sendSosAlert(
+        userName: userName,
+        heartRate: _heartRate,
+        spo2: _spo2,
+        locationText: locationText,
+        latitude: latitude,
+        longitude: longitude,
+      );
+
+      // Send to any globally configured extra IDs
+      for (final id in AppConstants.extraTelegramChatIds) {
+        if (id.isNotEmpty) {
+          await TelegramService().sendSosAlert(
+            userName: userName,
+            heartRate: _heartRate,
+            spo2: _spo2,
+            locationText: locationText,
+            latitude: latitude,
+            longitude: longitude,
+            chatId: id,
+          );
+        }
+      }
+
+      // Send directly to contacts that have telegramChatId
+      for (final contact in _emergencyContacts) {
+        if (contact.containsKey('telegramChatId') && contact['telegramChatId'].toString().isNotEmpty) {
+          await TelegramService().sendSosAlert(
+            userName: userName,
+            heartRate: _heartRate,
+            spo2: _spo2,
+            locationText: locationText,
+            latitude: latitude,
+            longitude: longitude,
+            chatId: contact['telegramChatId'].toString(),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('Error sending Telegram SOS: $e');
+    }
     
     // Update SOS event status
     await _updateSosEventStatus('dispatched');
@@ -583,14 +660,16 @@ class _SosScreenState extends State<SosScreen> {
         : _getDefaultEmergencyNumber();
     
     if (emergencyNumber.isNotEmpty) {
-      final Uri telUri = Uri(scheme: 'tel', path: emergencyNumber);
-      await launchUrl(telUri);
+      await _callNumber(emergencyNumber);
     }
     
     // Reset SOS state
     setState(() {
       _sosActive = false;
     });
+    
+    // Stop alarm after emergency is dispatched
+    _stopAlarm();
   }
   
   String _getDefaultEmergencyNumber() {
@@ -606,6 +685,54 @@ class _SosScreenState extends State<SosScreen> {
     
     return 'Lat: ${_currentPosition!.latitude.toStringAsFixed(6)}, '
         'Long: ${_currentPosition!.longitude.toStringAsFixed(6)}';
+  }
+
+  // Auto-dial emergency number
+  Future<void> _callNumber(String number) async {
+    try {
+      if (await Permission.phone.request().isGranted) {
+        // Auto-dial (requires CALL_PHONE permission)
+        final intent = AndroidIntent(
+          action: 'android.intent.action.CALL',
+          data: 'tel:$number',
+        );
+        await intent.launch();
+        debugPrint('✅ Auto-dialing emergency number: $number');
+      } else {
+        // Do nothing if permission denied (no fallback to dialer)
+        debugPrint('⚠️ Permission denied, not dialing');
+      }
+    } catch (e) {
+      debugPrint('❌ Error placing emergency call: $e');
+    }
+  }
+
+  // Play loud alarm sound
+  Future<void> _playAlarm() async {
+    if (_isAlarmPlaying) return;
+    
+    try {
+      // Use the bundled notification sound
+      await _audioPlayer.setAsset('assets/sounds/notification_sound.mp3');
+      await _audioPlayer.setLoopMode(LoopMode.one); // Loop continuously
+      await _audioPlayer.setVolume(1.0); // Max volume
+      await _audioPlayer.play();
+      _isAlarmPlaying = true;
+    } catch (e) {
+      debugPrint('Error playing alarm sound: $e');
+    }
+  }
+  
+  // Stop alarm sound
+  Future<void> _stopAlarm() async {
+    if (!_isAlarmPlaying) return;
+    
+    try {
+      await _audioPlayer.stop();
+      _isAlarmPlaying = false;
+    } catch (e) {
+      debugPrint('Error stopping alarm sound: $e');
+    }
   }
 
   @override

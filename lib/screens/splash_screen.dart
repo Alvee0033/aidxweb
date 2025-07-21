@@ -1,13 +1,13 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:medigay/services/auth_service.dart';
-import 'package:medigay/screens/auth/login_screen.dart';
-import 'package:medigay/screens/dashboard_screen.dart';
-import 'package:medigay/utils/theme.dart';
+import 'package:aidx/services/auth_service.dart';
+import 'package:aidx/screens/auth/login_screen.dart';
+import 'package:aidx/screens/dashboard_screen.dart';
+import 'package:aidx/utils/theme.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
-import 'package:medigay/utils/constants.dart';
-import 'package:medigay/services/notification_service.dart';
+import 'package:aidx/utils/constants.dart';
+import 'package:aidx/services/notification_service.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -186,7 +186,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                 const SizedBox(height: 24),
                 // App name
                 const Text(
-                  'Medigay',
+                  'AidX',
                   style: TextStyle(
                     fontSize: 32,
                     fontWeight: FontWeight.bold,

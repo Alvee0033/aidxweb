@@ -5,7 +5,8 @@ import '../utils/theme.dart';
 import '../services/firebase_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:intl/intl.dart';
+import 'package:intl/intl.dart';p
+import 'private_chat_screen.dart';
 
 class BloodDonationScreen extends StatefulWidget {
   const BloodDonationScreen({Key? key}) : super(key: key);
@@ -423,16 +424,11 @@ class _BloodDonationScreenState extends State<BloodDonationScreen> {
   // Find Donor Content
   Widget _buildFindDonorContent() {
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _buildFilters(),
-        const SizedBox(height: 24),
-        _buildActionButtons(),
-        const SizedBox(height: 24),
-        if (_showPostForm) ...[
-          _buildPostForm(),
-          const SizedBox(height: 24),
-        ],
-        _buildRequestsList(),
+        _buildFilters(), // Use existing filters method
+        const SizedBox(height: 16),
+        _buildDonorsList(),
       ],
     );
   }
@@ -555,7 +551,6 @@ class _BloodDonationScreenState extends State<BloodDonationScreen> {
                           icon: Icons.bloodtype,
                           onChanged: (value) {
                             setState(() => _selectedBloodType = value ?? 'A+');
-                            _loadDonationRequests();
                           },
                         ),
                       ),
@@ -567,6 +562,30 @@ class _BloodDonationScreenState extends State<BloodDonationScreen> {
                   ),
                   const SizedBox(height: 16),
                   _buildRadiusSlider(),
+                  const SizedBox(height: 16),
+                  Center(
+                    child: ElevatedButton.icon(
+                      onPressed: _loadDonors,
+                      icon: const Icon(Icons.search, size: 20),
+                      label: const Text(
+                        "Find Donors",
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          fontFamily: 'Montserrat',
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        foregroundColor: Colors.white,
+                        backgroundColor: AppTheme.primaryColor.withOpacity(0.6),
+                        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        elevation: 4,
+                        shadowColor: AppTheme.primaryColor.withOpacity(0.5),
+                        side: BorderSide(color: AppTheme.primaryColor),
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -1246,6 +1265,13 @@ class _BloodDonationScreenState extends State<BloodDonationScreen> {
                         ),
                       ),
                       const Spacer(),
+                      // Chat button
+                      if (request['userId'] != FirebaseAuth.instance.currentUser?.uid) ...[
+                        IconButton(
+                          icon: Icon(Icons.chat, color: AppTheme.primaryColor, size: 20),
+                          onPressed: () => _openChat(request['userId'], request['name'] ?? 'User'),
+                        ),
+                      ],
                       Text(
                         formattedDate,
                         style: TextStyle(
@@ -1399,6 +1425,13 @@ class _BloodDonationScreenState extends State<BloodDonationScreen> {
                         ),
                       ),
                       const Spacer(),
+                      // Chat button
+                      if (donor['userId'] != FirebaseAuth.instance.currentUser?.uid) ...[
+                        IconButton(
+                          icon: Icon(Icons.chat, color: AppTheme.accentColor, size: 20),
+                          onPressed: () => _openChat(donor['userId'], donor['name'] ?? 'User'),
+                        ),
+                      ],
                       Text(
                         formattedDate,
                         style: TextStyle(
@@ -1759,7 +1792,7 @@ class _BloodDonationScreenState extends State<BloodDonationScreen> {
         }
       }).where((data) => data != null).cast<Map<String, dynamic>>().toList();
 
-      // Filter by blood type and city in memory instead of in query
+      // Filter by blood type, city, and radius in memory
       final filteredDonors = donors.where((donor) {
         try {
           final matchesBloodType = donor['bloodType'] == _selectedBloodType;
@@ -1805,5 +1838,20 @@ class _BloodDonationScreenState extends State<BloodDonationScreen> {
         );
       }
     }
+  }
+
+  void _openChat(String peerId, String peerName) {
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null || currentUser.uid == peerId) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PrivateChatScreen(
+          currentUserId: currentUser.uid,
+          peerId: peerId,
+          peerName: peerName,
+        ),
+      ),
+    );
   }
 } 

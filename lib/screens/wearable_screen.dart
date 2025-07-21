@@ -1,10 +1,10 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
-import 'package:medigay/utils/theme.dart';
-import 'package:medigay/utils/constants.dart';
-import 'package:medigay/widgets/glass_container.dart';
-import 'package:medigay/services/database_init.dart';
+import 'package:aidx/utils/theme.dart';
+import 'package:aidx/utils/constants.dart';
+import 'package:aidx/widgets/glass_container.dart';
+import 'package:aidx/services/database_init.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -53,6 +53,11 @@ class _WearableScreenState extends State<WearableScreen> {
     _checkPermissions();
     _initializeBluetooth();
     _loadConnectedDevices();
+    // Start a demo simulation so the screen shows sample vitals even without a device
+    setState(() {
+      _isMonitoring = true;
+    });
+    _startSimulation();
   }
   
   @override

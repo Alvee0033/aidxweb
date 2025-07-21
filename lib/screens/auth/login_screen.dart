@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:medigay/services/auth_service.dart';
-import 'package:medigay/screens/dashboard_screen.dart';
-import 'package:medigay/utils/theme.dart';
-import 'package:medigay/widgets/glass_container.dart';
+import 'package:aidx/services/auth_service.dart';
+import 'package:aidx/screens/dashboard_screen.dart';
+import 'package:aidx/utils/theme.dart';
+import 'package:aidx/widgets/glass_container.dart';
 import 'package:flutter_feather_icons/flutter_feather_icons.dart';
-import 'package:medigay/utils/constants.dart';
+import 'package:aidx/utils/constants.dart';
 import 'dart:ui';
 
 class LoginScreen extends StatefulWidget {
@@ -413,7 +413,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                       ),
                       SizedBox(height: isSmallScreen ? 18 : 24),
                       Text(
-                        'Medigay',
+                        'AidX',
                         style: TextStyle(
                           fontSize: isSmallScreen ? 30 : 36,
                           fontWeight: FontWeight.w900,
@@ -498,7 +498,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                             children: [
                               Container(
                                 decoration: BoxDecoration(
-                                    color: AppTheme.bgGlassLight.withOpacity(0.7),
+                                    color: Colors.black.withOpacity(0.18),
                                     borderRadius: BorderRadius.circular(12),
                                 ),
                                 child: TabBar(
@@ -506,7 +506,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                   indicatorColor: AppTheme.primaryColor,
                                   indicatorSize: TabBarIndicatorSize.tab,
                                   labelColor: Colors.white,
-                                  unselectedLabelColor: AppTheme.textSecondary,
+                                  unselectedLabelColor: Colors.white70,
                                   labelStyle: TextStyle(
                                       fontSize: isSmallScreen ? 16 : 18,
                                       fontWeight: FontWeight.w700,

@@ -68,7 +68,7 @@ class AppDrawer extends StatelessWidget {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  'MediGay',
+                                  'AidX',
                                   style: TextStyle(
                                     color: Colors.white,
                                     fontSize: 24,
