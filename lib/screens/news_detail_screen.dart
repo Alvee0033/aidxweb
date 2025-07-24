@@ -7,13 +7,62 @@ import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:aidx/services/notification_service.dart';
 
-class NewsDetailScreen extends StatelessWidget {
+class NewsDetailScreen extends StatefulWidget {
   final NewsArticle article;
   
   const NewsDetailScreen({
     super.key,
     required this.article,
   });
+
+  @override
+  State<NewsDetailScreen> createState() => _NewsDetailScreenState();
+}
+
+class _NewsDetailScreenState extends State<NewsDetailScreen> with SingleTickerProviderStateMixin {
+  late AnimationController _contentAnimationController;
+  late Animation<Offset> _contentSlideAnimation;
+  late Animation<double> _contentFadeAnimation;
+  late Animation<double> _buttonScaleAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _contentAnimationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    );
+
+    _contentSlideAnimation = Tween<Offset>(
+      begin: const Offset(0, 0.2), // Start slightly below
+      end: Offset.zero,
+    ).animate(CurvedAnimation(
+      parent: _contentAnimationController,
+      curve: Curves.easeOut,
+    ));
+
+    _contentFadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _contentAnimationController,
+        curve: Curves.easeIn,
+      ),
+    );
+
+    _buttonScaleAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _contentAnimationController,
+        curve: Curves.elasticOut, // A bouncy effect
+      ),
+    );
+
+    _contentAnimationController.forward();
+  }
+
+  @override
+  void dispose() {
+    _contentAnimationController.dispose();
+    super.dispose();
+  }
 
   String _formatDate(String? dateString) {
     if (dateString == null) return '';
@@ -27,8 +76,8 @@ class NewsDetailScreen extends StatelessWidget {
   }
 
   Future<void> _openArticleUrl(BuildContext context) async {
-    if (article.url != null && article.url!.isNotEmpty) {
-      final Uri url = Uri.parse(article.url!);
+    if (widget.article.url != null && widget.article.url!.isNotEmpty) {
+      final Uri url = Uri.parse(widget.article.url!);
       if (await canLaunchUrl(url)) {
         await launchUrl(url, mode: LaunchMode.externalApplication);
       } else {
@@ -42,8 +91,8 @@ class NewsDetailScreen extends StatelessWidget {
   }
 
   Future<void> _shareArticle() async {
-    if (article.url != null && article.url!.isNotEmpty) {
-      final String shareText = '${article.title}\n\n${article.url}';
+    if (widget.article.url != null && widget.article.url!.isNotEmpty) {
+      final String shareText = '${widget.article.title}\n\n${widget.article.url}';
       await Share.share(shareText, subject: 'Check out this health news article');
     }
   }
@@ -56,7 +105,7 @@ class NewsDetailScreen extends StatelessWidget {
     
     notificationService.scheduleNotification(
       title: 'Article Reminder',
-      body: 'Remember to read: ${article.title}',
+      body: 'Remember to read: ${widget.article.title}',
       scheduledTime: reminderTime,
     );
     
@@ -95,7 +144,7 @@ class NewsDetailScreen extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Hero image
-            if (article.imageUrl != null && article.imageUrl!.isNotEmpty)
+            if (widget.article.imageUrl != null && widget.article.imageUrl!.isNotEmpty)
               Hero(
                 tag: 'news_image',
                 child: SizedBox(
@@ -105,7 +154,7 @@ class NewsDetailScreen extends StatelessWidget {
                     fit: StackFit.expand,
                     children: [
                       Image.network(
-                        article.imageUrl!,
+                        widget.article.imageUrl!,
                         fit: BoxFit.cover,
                         errorBuilder: (context, error, stackTrace) {
                           return Container(
@@ -142,86 +191,95 @@ class NewsDetailScreen extends StatelessWidget {
               ),
             
             // Content
-            Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Title
-                  Text(
-                    article.title,
-                    style: const TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: AppTheme.textPrimary,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  
-                  // Source and date
-                  Row(
+            SlideTransition(
+              position: _contentSlideAnimation,
+              child: FadeTransition(
+                opacity: _contentFadeAnimation,
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      if (article.source != null)
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: AppTheme.primaryColor.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Text(
-                            article.source!,
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500,
-                              color: AppTheme.primaryColor,
+                      // Title
+                      Text(
+                        widget.article.title,
+                        style: const TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: AppTheme.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      
+                      // Source and date
+                      Row(
+                        children: [
+                          if (widget.article.source != null)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: AppTheme.primaryColor.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                widget.article.source!,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w500,
+                                  color: AppTheme.primaryColor,
+                                ),
+                              ),
                             ),
+                          if (widget.article.source != null && widget.article.publishedAt != null)
+                            const SizedBox(width: 8),
+                          if (widget.article.publishedAt != null)
+                            Text(
+                              _formatDate(widget.article.publishedAt),
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey[600],
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
+                      
+                      // Description
+                      if (widget.article.description != null && widget.article.description!.isNotEmpty)
+                        Text(
+                          widget.article.description!,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            height: 1.5,
+                            color: AppTheme.textPrimary,
                           ),
                         ),
-                      if (article.source != null && article.publishedAt != null)
-                        const SizedBox(width: 8),
-                      if (article.publishedAt != null)
-                        Text(
-                          _formatDate(article.publishedAt),
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey[600],
+                      
+                      const SizedBox(height: 30),
+                      
+                      // Read more button
+                      if (widget.article.url != null && widget.article.url!.isNotEmpty)
+                        Center(
+                          child: ScaleTransition(
+                            scale: _buttonScaleAnimation,
+                            child: ElevatedButton.icon(
+                              onPressed: () => _openArticleUrl(context),
+                              icon: const Icon(FeatherIcons.externalLink),
+                              label: const Text('Read Full Article'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppTheme.primaryColor,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                              ),
+                            ),
                           ),
                         ),
                     ],
                   ),
-                  const SizedBox(height: 20),
-                  
-                  // Description
-                  if (article.description != null && article.description!.isNotEmpty)
-                    Text(
-                      article.description!,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        height: 1.5,
-                        color: AppTheme.textPrimary,
-                      ),
-                    ),
-                  
-                  const SizedBox(height: 30),
-                  
-                  // Read more button
-                  if (article.url != null && article.url!.isNotEmpty)
-                    Center(
-                      child: ElevatedButton.icon(
-                        onPressed: () => _openArticleUrl(context),
-                        icon: const Icon(FeatherIcons.externalLink),
-                        label: const Text('Read Full Article'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppTheme.primaryColor,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
+                ),
               ),
             ),
           ],
