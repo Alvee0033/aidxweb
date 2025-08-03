@@ -38,6 +38,22 @@ void main() async {
   // Add debug output
   debugPrint('🚀 Starting app initialization...');
   
+  // Configure system UI and text input handling
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.light,
+      systemNavigationBarColor: Colors.transparent,
+      systemNavigationBarIconBrightness: Brightness.light,
+    ),
+  );
+  
+  // Configure text input handling
+  SystemChrome.setEnabledSystemUIMode(
+    SystemUiMode.edgeToEdge,
+    overlays: [SystemUiOverlay.top, SystemUiOverlay.bottom],
+  );
+  
   try {
     // Initialize Firebase
     debugPrint('📱 Initializing Firebase...');
@@ -200,6 +216,16 @@ class MyApp extends StatelessWidget {
           debugShowCheckedModeBanner: false,
           theme: AppTheme.darkTheme,
           navigatorObservers: [routeObserver],
+          // Add configurations for better text input handling
+          builder: (context, child) {
+            return MediaQuery(
+              data: MediaQuery.of(context).copyWith(
+                textScaleFactor: 1.0,
+                alwaysUse24HourFormat: true,
+              ),
+              child: child!,
+            );
+          },
           initialRoute: '/',
           routes: {
             '/': (context) {
