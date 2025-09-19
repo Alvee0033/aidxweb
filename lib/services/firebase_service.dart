@@ -38,6 +38,39 @@ class FirebaseService extends ChangeNotifier {
         'timestamp': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
 
+      // Create indexes for symptoms collection
+      await _firestore.collection(symptomsCollection).doc('indexes').set({
+        'userId_timestamp_index': true,
+        'userId_index': true,
+        'timestamp_index': true,
+        'timestamp': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      // Create indexes for emergency contacts collection
+      await _firestore.collection(emergencyContactsCollection).doc('indexes').set({
+        'userId_isPrimary_index': true,
+        'userId_index': true,
+        'isPrimary_index': true,
+        'timestamp': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      // Create indexes for health habits collection
+      await _firestore.collection('health_habits').doc('indexes').set({
+        'userId_date_index': true,
+        'userId_habitType_index': true,
+        'userId_index': true,
+        'date_index': true,
+        'timestamp': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      // Create indexes for reports collection
+      await _firestore.collection('reports').doc('indexes').set({
+        'userId_timestamp_index': true,
+        'userId_index': true,
+        'timestamp_index': true,
+        'timestamp': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
       debugPrint('✅ Firestore indexes created successfully');
     } catch (e) {
       debugPrint('⚠️ Error creating Firestore indexes: $e');
@@ -58,6 +91,9 @@ class FirebaseService extends ChangeNotifier {
         appointmentsCollection,
         symptomsCollection,
         healthDataCollection,
+        'reports',
+        'health_habits',
+        emergencyContactsCollection,
       ];
 
       for (final collection in collections) {
@@ -73,6 +109,43 @@ class FirebaseService extends ChangeNotifier {
       }
     } catch (e) {
       debugPrint('Error initializing collections: $e');
+    }
+  }
+
+  // Test Firebase connectivity and indexes
+  Future<void> testFirebaseConnectivity() async {
+    try {
+      debugPrint('🔍 Testing Firebase connectivity...');
+      
+      final user = currentUser;
+      if (user == null) {
+        debugPrint('⚠️ No user logged in for connectivity test');
+        return;
+      }
+
+      // Test basic connectivity
+      await _firestore.collection('users').doc(user.uid).get();
+      debugPrint('✅ Basic Firebase connectivity: OK');
+
+      // Test symptom history query (with fallback)
+      try {
+        await getSymptomHistory(user.uid);
+        debugPrint('✅ Symptom history query: OK');
+      } catch (e) {
+        debugPrint('⚠️ Symptom history query failed: $e');
+      }
+
+      // Test health habits query (with fallback)
+      try {
+        await getHealthHabits(user.uid);
+        debugPrint('✅ Health habits query: OK');
+      } catch (e) {
+        debugPrint('⚠️ Health habits query failed: $e');
+      }
+
+      debugPrint('🎉 Firebase connectivity test completed');
+    } catch (e) {
+      debugPrint('❌ Firebase connectivity test failed: $e');
     }
   }
 
@@ -392,8 +465,16 @@ class FirebaseService extends ChangeNotifier {
           .snapshots();
     } catch (e) {
       debugPrint('Error creating emergency contacts stream: $e');
-      // Return empty stream on error
-      return Stream.empty();
+      // Fallback: Simple query without ordering
+      try {
+        return _firestore
+            .collection(emergencyContactsCollection)
+            .where('userId', isEqualTo: userId)
+            .snapshots();
+      } catch (fallbackError) {
+        debugPrint('Fallback emergency contacts stream also failed: $fallbackError');
+        return Stream.empty();
+      }
     }
   }
 
@@ -670,48 +751,82 @@ class FirebaseService extends ChangeNotifier {
 
   Future<List<Map<String, dynamic>>> getSymptomHistory(String userId) async {
     print('🔍 Retrieving symptom history for user: $userId');
-    final query = _firestore
-        .collection(symptomsCollection)
-        .where('userId', isEqualTo: userId)
-        .orderBy('timestamp', descending: true)
-        .limit(50);
+    
     try {
-      // Try cache first for instant UI
+      // First try the optimized query with composite index
+      final query = _firestore
+          .collection(symptomsCollection)
+          .where('userId', isEqualTo: userId)
+          .orderBy('timestamp', descending: true)
+          .limit(50);
+      
       try {
-        final cacheSnap = await query.get(const GetOptions(source: Source.cache));
-        print('📦 Cache query results: ${cacheSnap.docs.length} documents');
-        
-        if (cacheSnap.docs.isNotEmpty) {
-          // Refresh cache in background
-          unawaited(query.get());
-          final cacheResults = cacheSnap.docs.map((doc) => {
-            'id': doc.id,
-            ...doc.data(),
-          }).toList();
+        // Try cache first for instant UI
+        try {
+          final cacheSnap = await query.get(const GetOptions(source: Source.cache));
+          print('📦 Cache query results: ${cacheSnap.docs.length} documents');
           
-          print('✅ Returning ${cacheResults.length} records from cache');
-          return cacheResults;
+          if (cacheSnap.docs.isNotEmpty) {
+            // Refresh cache in background
+            unawaited(query.get());
+            final cacheResults = cacheSnap.docs.map((doc) => {
+              'id': doc.id,
+              ...doc.data(),
+            }).toList();
+            
+            print('✅ Returning ${cacheResults.length} records from cache');
+            return cacheResults;
+          }
+        } catch (cacheError) {
+          print('❌ Cache query error: $cacheError');
         }
-      } catch (cacheError) {
-        print('❌ Cache query error: $cacheError');
+        
+        // Fallback to server
+        print('🌐 Fetching symptom history from server');
+        final snapshot = await query.get();
+        
+        print('📊 Server query results: ${snapshot.docs.length} documents');
+        
+        final results = snapshot.docs.map((doc) => {
+          'id': doc.id,
+          ...doc.data(),
+        }).toList();
+        
+        if (results.isEmpty) {
+          print('⚠️ No symptom records found for user');
+        }
+        
+        return results;
+      } catch (indexError) {
+        print('❌ Index error, trying fallback query: $indexError');
+        
+        // Fallback: Simple query without ordering (no composite index needed)
+        final fallbackQuery = _firestore
+            .collection(symptomsCollection)
+            .where('userId', isEqualTo: userId)
+            .limit(50);
+        
+        final fallbackSnapshot = await fallbackQuery.get();
+        print('📊 Fallback query results: ${fallbackSnapshot.docs.length} documents');
+        
+        final fallbackResults = fallbackSnapshot.docs.map((doc) => {
+          'id': doc.id,
+          ...doc.data(),
+        }).toList();
+        
+        // Sort manually by timestamp
+        fallbackResults.sort((a, b) {
+          final aTime = a['timestamp'] as Timestamp?;
+          final bTime = b['timestamp'] as Timestamp?;
+          if (aTime == null && bTime == null) return 0;
+          if (aTime == null) return 1;
+          if (bTime == null) return -1;
+          return bTime.compareTo(aTime);
+        });
+        
+        print('✅ Returning ${fallbackResults.length} records from fallback query');
+        return fallbackResults;
       }
-      
-      // Fallback to server
-      print('🌐 Fetching symptom history from server');
-      final snapshot = await query.get();
-      
-      print('📊 Server query results: ${snapshot.docs.length} documents');
-      
-      final results = snapshot.docs.map((doc) => {
-        'id': doc.id,
-        ...doc.data(),
-      }).toList();
-      
-      if (results.isEmpty) {
-        print('⚠️ No symptom records found for user');
-      }
-      
-      return results;
     } catch (e) {
       print('❌ Comprehensive error retrieving symptom history: $e');
       
@@ -726,6 +841,98 @@ class FirebaseService extends ChangeNotifier {
       }
       
       return []; // Return empty list on error
+    }
+  }
+
+  // Save report analysis record
+  Future<void> saveReportRecord(String userId, Map<String, dynamic> recordData) async {
+    try {
+      print('💾 Saving report record for user: $userId');
+      await _firestore.collection('reports').add(recordData);
+      print('✅ Report record saved successfully');
+    } catch (e) {
+      print('❌ Error saving report record: $e');
+      rethrow;
+    }
+  }
+
+  // Get report analysis history
+  Future<List<Map<String, dynamic>>> getReportHistory(String userId) async {
+    try {
+      print('🔍 Retrieving report history for user: $userId');
+      
+      final query = _firestore
+          .collection('reports')
+          .where('userId', isEqualTo: userId)
+          .orderBy('timestamp', descending: true)
+          .limit(50);
+      
+      final snapshot = await query.get();
+      
+      print('📊 Retrieved ${snapshot.docs.length} report records');
+      
+      return snapshot.docs.map((doc) => {
+        'id': doc.id,
+        ...doc.data(),
+      }).toList();
+    } catch (e) {
+      print('❌ Error retrieving report history: $e');
+      return [];
+    }
+  }
+
+  // Get health habits with fallback
+  Future<List<Map<String, dynamic>>> getHealthHabits(String userId) async {
+    try {
+      print('🔍 Retrieving health habits for user: $userId');
+      
+      // Try optimized query first
+      final query = _firestore
+          .collection('health_habits')
+          .where('userId', isEqualTo: userId)
+          .orderBy('date', descending: true)
+          .limit(100);
+      
+      try {
+        final snapshot = await query.get();
+        print('📊 Retrieved ${snapshot.docs.length} health habit records');
+        
+        return snapshot.docs.map((doc) => {
+          'id': doc.id,
+          ...doc.data(),
+        }).toList();
+      } catch (indexError) {
+        print('❌ Index error, trying fallback query: $indexError');
+        
+        // Fallback: Simple query without ordering
+        final fallbackQuery = _firestore
+            .collection('health_habits')
+            .where('userId', isEqualTo: userId)
+            .limit(100);
+        
+        final fallbackSnapshot = await fallbackQuery.get();
+        print('📊 Fallback query results: ${fallbackSnapshot.docs.length} documents');
+        
+        final fallbackResults = fallbackSnapshot.docs.map((doc) => {
+          'id': doc.id,
+          ...doc.data(),
+        }).toList();
+        
+        // Sort manually by date
+        fallbackResults.sort((a, b) {
+          final aDate = a['date'] as Timestamp?;
+          final bDate = b['date'] as Timestamp?;
+          if (aDate == null && bDate == null) return 0;
+          if (aDate == null) return 1;
+          if (bDate == null) return -1;
+          return bDate.compareTo(aDate);
+        });
+        
+        return fallbackResults;
+      }
+    } catch (e) {
+      print('❌ Error retrieving health habits: $e');
+      return [];
     }
   }
 

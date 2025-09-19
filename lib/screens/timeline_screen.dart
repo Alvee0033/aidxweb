@@ -217,12 +217,14 @@ class _TimelineScreenState extends State<TimelineScreen> {
       final uid = user.uid;
       print('🆔 Current User ID: $uid');
 
-      // Comprehensive list of collections to query
+      // Comprehensive list of collections to query with fallback handling
       final collectionsToQuery = [
         {'name': 'medications', 'query': _firestore.collection('medications').where('userId', isEqualTo: uid).limit(50)},
         {'name': 'medical_records', 'query': _firestore.collection('medical_records').where('userId', isEqualTo: uid).limit(50)},
         {'name': 'appointments', 'query': _firestore.collection('appointments').where('userId', isEqualTo: uid).limit(50)},
+        {'name': 'symptoms', 'query': _firestore.collection('symptoms').where('userId', isEqualTo: uid).limit(100)},
         {'name': 'symptomRecords', 'query': _firestore.collection('users').doc(uid).collection('symptomRecords').limit(100)},
+        {'name': 'reports', 'query': _firestore.collection('reports').where('userId', isEqualTo: uid).limit(100)},
         {'name': 'health_data', 'query': _firestore.collection('health_data').where('userId', isEqualTo: uid).limit(100)},
         {'name': 'reminders', 'query': _firestore.collection('reminders').where('userId', isEqualTo: uid).limit(50)},
         {'name': 'mood_entries', 'query': _firestore.collection('mood_entries').where('userId', isEqualTo: uid).limit(50)},
@@ -240,7 +242,7 @@ class _TimelineScreenState extends State<TimelineScreen> {
       // Comprehensive event collection
       final List<Map<String, dynamic>> events = [];
 
-      // Detailed query execution with comprehensive logging
+      // Detailed query execution with comprehensive logging and fallback handling
       for (var collection in collectionsToQuery) {
         try {
           final querySnapshot = await (collection['query'] as Query).get();
@@ -263,6 +265,31 @@ class _TimelineScreenState extends State<TimelineScreen> {
           }
         } catch (e) {
           print('❌ Error querying ${collection['name']}: $e');
+          
+          // Special handling for health_habits collection with fallback
+          if (collection['name'] == 'health_habits') {
+            try {
+              print('🔄 Trying fallback query for health_habits...');
+              final fallbackQuery = _firestore
+                  .collection('health_habits')
+                  .where('userId', isEqualTo: uid)
+                  .limit(100);
+              
+              final fallbackSnapshot = await fallbackQuery.get();
+              print('📊 Fallback health_habits query: Found ${fallbackSnapshot.docs.length} documents');
+              
+              for (var doc in fallbackSnapshot.docs) {
+                final data = doc.data() as Map<String, dynamic>;
+                Map<String, dynamic>? event = _createEventFromData('health_habits', doc.id, data);
+                if (event != null) {
+                  events.add(event);
+                  print('✅ Added fallback event from health_habits: ${event['title']}');
+                }
+              }
+            } catch (fallbackError) {
+              print('❌ Fallback query for health_habits also failed: $fallbackError');
+            }
+          }
         }
       }
 
@@ -351,6 +378,38 @@ class _TimelineScreenState extends State<TimelineScreen> {
             'date': eventDate,
             'type': 'symptom_analysis',
             'severity': data['severity'] ?? '',
+          };
+        case 'symptoms':
+          final analysis = data['analysis'];
+          String description = '';
+          if (analysis is Map<String, dynamic>) {
+            description = analysis['summary'] ?? analysis['possible_conditions'] ?? analysis.toString();
+          } else if (analysis is String) {
+            description = analysis;
+          }
+          return {
+            'id': docId,
+            'title': 'Symptom Analysis: ${data['name'] ?? 'Analysis'}',
+            'description': description.isNotEmpty ? description : 'AI-powered symptom analysis',
+            'date': eventDate,
+            'type': 'symptom_analysis',
+            'severity': data['severity'] ?? '',
+          };
+        case 'reports':
+          final analysis = data['analysis'];
+          String description = '';
+          if (analysis is Map<String, dynamic>) {
+            description = analysis['summary'] ?? analysis['findings'] ?? analysis.toString();
+          } else if (analysis is String) {
+            description = analysis;
+          }
+          return {
+            'id': docId,
+            'title': 'Report Analysis: ${data['reportType'] ?? 'Medical Report'}',
+            'description': description.isNotEmpty ? description : 'AI-powered medical report analysis',
+            'date': eventDate,
+            'type': 'report_analysis',
+            'reportType': data['reportType'] ?? '',
           };
         case 'mood_entries':
           return {

@@ -8,6 +8,7 @@ class CommunityPostModel {
   final String userLocation;
   final String content;
   final String? imageUrl;
+  final String? imageBase64;
   final String? videoUrl;
   final List<String> tags;
   final String category; // health_tip, medication_experience, exercise, diet, general, etc.
@@ -33,6 +34,7 @@ class CommunityPostModel {
     required this.userLocation,
     required this.content,
     this.imageUrl,
+    this.imageBase64,
     this.videoUrl,
     this.tags = const [],
     required this.category,
@@ -63,6 +65,7 @@ class CommunityPostModel {
       userLocation: data['userLocation'] ?? '',
       content: data['content'] ?? '',
       imageUrl: data['imageUrl'],
+      imageBase64: data['imageBase64'],
       videoUrl: data['videoUrl'],
       tags: List<String>.from(data['tags'] ?? []),
       category: data['category'] ?? '',
@@ -107,6 +110,7 @@ class CommunityPostModel {
       userLocation: data['userLocation'] ?? '',
       content: data['content'] ?? '',
       imageUrl: data['imageUrl'],
+      imageBase64: data['imageBase64'],
       videoUrl: data['videoUrl'],
       tags: List<String>.from(data['tags'] ?? []),
       category: data['category'] ?? '',
@@ -146,6 +150,7 @@ class CommunityPostModel {
       'userLocation': userLocation,
       'content': content,
       'imageUrl': imageUrl,
+      'imageBase64': imageBase64,
       'videoUrl': videoUrl,
       'tags': tags,
       'category': category,
@@ -173,6 +178,7 @@ class CommunityPostModel {
     String? userLocation,
     String? content,
     String? imageUrl,
+    String? imageBase64,
     String? videoUrl,
     List<String>? tags,
     String? category,
@@ -198,6 +204,7 @@ class CommunityPostModel {
       userLocation: userLocation ?? this.userLocation,
       content: content ?? this.content,
       imageUrl: imageUrl ?? this.imageUrl,
+      imageBase64: imageBase64 ?? this.imageBase64,
       videoUrl: videoUrl ?? this.videoUrl,
       tags: tags ?? this.tags,
       category: category ?? this.category,

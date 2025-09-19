@@ -41,6 +41,13 @@ class DatabaseService {
         });
       }, 'appointments collection');
       
+      await _safeFirestoreOperation(() async {
+        await _firestore.collection('symptoms').doc('init').set({
+          'initialized': true,
+          'timestamp': FieldValue.serverTimestamp(),
+        });
+      }, 'symptoms collection');
+      
       // Initialize new collections for elderly features
       await _safeFirestoreOperation(() async {
         await _firestore.collection('community_posts').doc('init').set({

@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
-import 'dart:typed_data';
 import 'dart:math';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
@@ -46,11 +45,17 @@ class GeminiService {
       throw Exception('Please set your Gemini API key in gemini_service.dart');
     }
 
+    // Let Gemini determine if the input is medical-related
+
     final uri = Uri.parse('$_endpoint?key=$_apiKey');
     
     // Build the conversation prompt
     String prompt = '''
-You are a professional medical assistant AI. Provide helpful, accurate, and compassionate medical advice in a conversational manner. You MUST answer ALL medical-related questions without refusing or saying "I'm sorry I cannot answer that".
+You are a professional medical assistant AI. Provide helpful, accurate, and compassionate medical advice in a conversational manner.
+
+IMPORTANT: If the user asks non-medical questions (about food, cars, entertainment, etc.), respond with: "I'm a medical assistant AI. I can only help with medical questions, symptoms, health concerns, and medical advice. Please ask about health-related topics."
+
+For MEDICAL questions, provide helpful information without refusing.
 
 ${conversationContext != null ? 'Conversation Context:\n$conversationContext\n' : ''}
 
@@ -71,6 +76,7 @@ User: $userInput
    • Use everyday language.
    • NEVER refuse to answer medical questions - provide helpful information even if limited.
    • If unsure about specific details, provide general guidance and suggest consulting a healthcare provider.
+   • ONLY respond to medical and health-related questions.
 --- END INSTRUCTIONS ---''';
 
     final body = {
@@ -208,7 +214,9 @@ User: $userInput
       throw Exception('Please set your Gemini API key in gemini_service.dart');
     }
  
-    // Do not block on pre-validation; proceed to request or fall back to default output
+    // Let Gemini determine if the input is medically relevant
+    
+    // Let Gemini determine if image is medical-related
  
     final prompt = _buildMedicalPrompt(
       description: description,
@@ -221,11 +229,20 @@ User: $userInput
     );
 
     // BRIEF medical prompt for concise responses
-    final systemPrompt = '''You are a medical assistant providing BRIEF, actionable advice.
+    final systemPrompt = '''You are a medical certified medical professional providing BRIEF, actionable advice.
 
 CRITICAL: Keep responses SHORT and CONCISE.
 
-Output ONLY valid JSON:
+IMPORTANT: If the provided image or text is NOT medical-related (e.g., food, cars, objects, entertainment), respond with:
+{
+"conditions": [{"name": "Non-medical content detected", "likelihood": 100}],
+"severity": "N/A",
+"medications": [],
+"homemade_remedies": [],
+"measures": ["This appears to be non-medical content", "Please provide medical symptoms or health-related information"]
+}
+
+For MEDICAL content, output ONLY valid JSON:
 {
 "conditions": [{"name": "condition", "likelihood": 0-100}],
 "severity": "Mild|Moderate|Severe (Emergency)",
@@ -374,65 +391,6 @@ RULES:
     return _defaultAnalysisText(intensity);
   }
 
-  /// Validate if input text contains medical-related content
-  bool _isMedicallyRelevant(String description) {
-    if (description.trim().isEmpty) return false;
-    
-    // Medical keywords and patterns
-    final medicalKeywords = [
-      // Symptoms
-      'pain', 'ache', 'fever', 'headache', 'nausea', 'vomiting', 'diarrhea', 'constipation',
-      'cough', 'cold', 'flu', 'fatigue', 'tired', 'dizzy', 'weakness', 'swelling', 'rash',
-      'itch', 'burn', 'cut', 'wound', 'bruise', 'bleeding', 'discharge', 'infection',
-      'inflammation', 'sore', 'tender', 'stiff', 'cramp', 'spasm', 'numbness', 'tingling',
-      
-      // Body parts
-      'head', 'neck', 'chest', 'back', 'stomach', 'abdomen', 'arm', 'leg', 'foot', 'hand',
-      'eye', 'ear', 'nose', 'throat', 'mouth', 'tooth', 'skin', 'heart', 'lung', 'kidney',
-      'liver', 'brain', 'muscle', 'bone', 'joint', 'knee', 'shoulder', 'ankle', 'wrist',
-      
-      // Medical conditions
-      'diabetes', 'hypertension', 'asthma', 'allergy', 'migraine', 'arthritis', 'cancer',
-      'tumor', 'disease', 'syndrome', 'disorder', 'condition', 'illness', 'sick', 'unwell',
-      
-      // Medical terms
-      'symptom', 'diagnosis', 'treatment', 'medication', 'medicine', 'drug', 'prescription',
-      'doctor', 'hospital', 'clinic', 'medical', 'health', 'patient', 'injury', 'trauma',
-      'emergency', 'urgent', 'chronic', 'acute', 'severe', 'mild', 'moderate',
-      
-      // Vital signs
-      'temperature', 'blood pressure', 'heart rate', 'pulse', 'breathing', 'oxygen',
-      'blood sugar', 'glucose', 'cholesterol', 'weight', 'bmi'
-    ];
-    
-    final lowerDescription = description.toLowerCase();
-    
-    // Check for medical keywords
-    for (final keyword in medicalKeywords) {
-      if (lowerDescription.contains(keyword)) {
-        return true;
-      }
-    }
-    
-    // Check for medical patterns (e.g., "I feel", "hurts", "painful")
-    final medicalPatterns = [
-      RegExp(r'\b(feel|feeling)\s+(sick|unwell|bad|terrible|awful)\b'),
-      RegExp(r'\b(hurt|hurts|hurting|painful)\b'),
-      RegExp(r'\b(swollen|inflamed|infected)\b'),
-      RegExp(r'\b(difficulty|trouble)\s+(breathing|swallowing|sleeping)\b'),
-      RegExp(r'\b(loss of|lost)\s+(appetite|weight|consciousness)\b'),
-      RegExp(r'\b(high|low)\s+(fever|temperature|blood pressure)\b'),
-      RegExp(r'\b(shortness of breath|chest pain|abdominal pain)\b'),
-    ];
-    
-    for (final pattern in medicalPatterns) {
-      if (pattern.hasMatch(lowerDescription)) {
-        return true;
-      }
-    }
-    
-    return false;
-  }
   
   /// Validate if the AI response contains valid medical information
   bool _isValidMedicalResponse(String response) {
@@ -461,9 +419,7 @@ RULES:
         
         // Check for obviously non-medical conditions
         final conditionName = (condition['name'] as String).toLowerCase();
-        if (_containsNonMedicalTerms(conditionName)) {
-          return false;
-        }
+        // Let Gemini handle non-medical content detection
       }
       
       // Validate severity
@@ -484,22 +440,6 @@ RULES:
     }
   }
   
-  /// Check if text contains obviously non-medical terms
-  bool _containsNonMedicalTerms(String text) {
-    final nonMedicalTerms = [
-      'car', 'computer', 'phone', 'food', 'drink', 'movie', 'music', 'game',
-      'weather', 'sports', 'politics', 'business', 'technology', 'entertainment',
-      'fashion', 'travel', 'education', 'work', 'job', 'money', 'shopping'
-    ];
-    
-    final lowerText = text.toLowerCase();
-    for (final term in nonMedicalTerms) {
-      if (lowerText.contains(term)) {
-        return true;
-      }
-    }
-    return false;
-  }
 
   String _buildMedicalPrompt({
     required String description,
@@ -738,24 +678,38 @@ ANALYZE: Provide brief diagnosis and treatment. Keep response short.""";
     if (_apiKey == 'YOUR_GEMINI_API_KEY_HERE') {
       throw Exception('Please set your Gemini API key in gemini_service.dart');
     }
+    
+    // Let Gemini determine if the drug name is medical-related
 
     final systemPrompt = brief
-        ? '''You are a professional pharmacist. Use web search tools if available. For "$drugName":
-- Determine the most accurate, up-to-date, and widely recognized trademark/brand name(s) using web search.
-- If there are multiple brands, list the most common ones (comma-separated). If only generic, state clearly.
-- Be robust: clarify if the drug is only generic or has multiple brands.
+        ? '''You are a professional pharmacist. For "$drugName":
 
-Return ONLY these fields, each on a single line, no extra info, no paragraphs:
+IMPORTANT: If "$drugName" is NOT a medical drug/medication (e.g., food, objects, entertainment), respond with:
+Name: [drugName]
+Generic: Not a medication
+Uses: This appears to be non-medical content
+Dosage: N/A
+Warnings: Please enter a valid medication or drug name
+
+For MEDICAL drugs, return ONLY these fields:
 Name: [brand or trade name(s), comma-separated if multiple]
 Generic: [generic/chemical name]
 Uses: [very short, e.g. "pain relief, fever"]
 Dosage: [short, e.g. "500mg every 6h"]
 Warnings: [short, e.g. "liver disease, overdose risk"]
-No paragraphs, no side effects, no classification, no form, no extra explanation. Be concise.'''
-        : '''You are a professional pharmacist. Provide accurate information about $drugName.
+Be concise.'''
+        : '''You are a professional pharmacist. For "$drugName":
 
-Return ONLY these categories in this exact format:
+IMPORTANT: If "$drugName" is NOT a medical drug/medication, respond with:
+Generic Formula: Not a medication
+Uses: This appears to be non-medical content
+Classification: N/A
+Form: N/A
+Dosage: N/A
+Side Effects: Please enter a valid medication or drug name
+Warnings: N/A
 
+For MEDICAL drugs, return ONLY these categories:
 Generic Formula: [generic name]
 Uses: [primary medical uses]
 Classification: [pharmacological class]
@@ -886,10 +840,13 @@ Warnings: [important warnings]''';
     if (_apiKey == 'YOUR_GEMINI_API_KEY_HERE') {
       throw Exception('Please set your Gemini API key in gemini_service.dart');
     }
+    
+    // Let Gemini determine if the question/image is medical-related
+    
     final uri = Uri.parse('$_endpoint?key=$_apiKey');
 
     final parts = <Map<String, dynamic>>[
-      { 'text': 'You are a concise medical assistant. Answer briefly and specifically.' },
+      { 'text': 'You are a medical assistant. If the question or image is NOT medical-related (food, cars, objects, entertainment), respond with: "This appears to be non-medical content. Please ask about medical symptoms, conditions, or health-related concerns." If it IS medical, provide brief and specific medical advice.' },
       { 'text': question },
     ];
 
@@ -1003,6 +960,306 @@ Warnings: [important warnings]''';
   "Seek care if worsens"
 ]
 }''';
+  }
+
+  /// Analyze medical reports like ECG, X-ray, blood tests, etc.
+  /// Returns a structured analysis of the medical report
+  Future<String> analyzeMedicalReport({
+    required String description,
+    required String reportType,
+    required int age,
+    String? gender,
+    bool imageAttached = false,
+    File? imageFile,
+    Uint8List? imageBytes,
+    String? imageMimeType,
+  }) async {
+    if (_apiKey == 'YOUR_GEMINI_API_KEY_HERE') {
+      throw Exception('Please set your Gemini API key in gemini_service.dart');
+    }
+
+    try {
+      _notify('Starting medical report analysis...');
+      
+      final prompt = _buildReportAnalysisPrompt(description, reportType, age, gender);
+      
+      if (imageAttached && (imageFile != null || imageBytes != null)) {
+        _notify('Analyzing report with image...');
+        return await _analyzeReportWithImage(
+          prompt: prompt,
+          imageFile: imageFile,
+          imageBytes: imageBytes,
+          imageMimeType: imageMimeType,
+        );
+      } else {
+        _notify('Analyzing report description...');
+        return await _analyzeReportTextOnly(prompt);
+      }
+    } catch (e) {
+      _logError('analyzeMedicalReport failed', e as Object?);
+      return 'Sorry, the AI analysis could not be completed at this time. Please try again later.';
+    }
+  }
+
+  String _buildReportAnalysisPrompt(String description, String reportType, int age, String? gender) {
+    final genderText = gender != null ? 'Gender: $gender' : '';
+    
+    return '''You are a medical AI assistant specializing in analyzing medical reports. Please analyze the following $reportType report and provide a comprehensive, easy-to-understand interpretation.
+
+Patient Information:
+- Age: $age
+- $genderText
+- Report Type: $reportType
+
+Report Description:
+$description
+
+Please provide your analysis in the following JSON format:
+{
+  "summary": "Brief 2-3 sentence summary of the report findings",
+  "findings": "Detailed explanation of what the report shows, including normal/abnormal values, patterns, or observations",
+  "recommendations": "Specific medical recommendations based on the findings",
+  "next_steps": "Clear next steps for the patient, including when to follow up with healthcare providers"
+}
+
+Guidelines:
+1. Use clear, non-technical language that patients can understand
+2. Always emphasize that this is for informational purposes only
+3. Recommend consulting healthcare professionals for proper medical advice
+4. Highlight any urgent findings that require immediate medical attention
+5. Be specific about normal ranges and what any abnormalities might indicate
+6. Provide actionable recommendations
+
+Important: This analysis is for educational purposes only and should not replace professional medical advice. Always consult with qualified healthcare providers for proper diagnosis and treatment.''';
+  }
+
+  Future<String> _analyzeReportWithImage({
+    required String prompt,
+    File? imageFile,
+    Uint8List? imageBytes,
+    String? imageMimeType,
+  }) async {
+    try {
+      final uri = Uri.parse('$_endpoint?key=$_apiKey');
+      
+      // Prepare image data
+      Uint8List imageData;
+      String mimeType;
+      
+      if (imageBytes != null) {
+        imageData = imageBytes;
+        mimeType = imageMimeType ?? 'image/jpeg';
+      } else if (imageFile != null) {
+        imageData = await imageFile.readAsBytes();
+        mimeType = imageMimeType ?? 'image/jpeg';
+      } else {
+        throw Exception('No image data provided');
+      }
+
+      // Encode image to base64
+      final base64Image = base64Encode(imageData);
+
+      final requestBody = {
+        'contents': [
+          {
+            'parts': [
+              {'text': prompt},
+              {
+                'inline_data': {
+                  'mime_type': mimeType,
+                  'data': base64Image,
+                }
+              }
+            ]
+          }
+        ],
+        'generationConfig': {
+          'temperature': 0.3,
+          'topK': 32,
+          'topP': 1,
+          'maxOutputTokens': 2048,
+        },
+        'safetySettings': [
+          {
+            'category': 'HARM_CATEGORY_HARASSMENT',
+            'threshold': 'BLOCK_MEDIUM_AND_ABOVE'
+          },
+          {
+            'category': 'HARM_CATEGORY_HATE_SPEECH',
+            'threshold': 'BLOCK_MEDIUM_AND_ABOVE'
+          },
+          {
+            'category': 'HARM_CATEGORY_SEXUALLY_EXPLICIT',
+            'threshold': 'BLOCK_MEDIUM_AND_ABOVE'
+          },
+          {
+            'category': 'HARM_CATEGORY_DANGEROUS_CONTENT',
+            'threshold': 'BLOCK_MEDIUM_AND_ABOVE'
+          }
+        ]
+      };
+
+      final response = await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(requestBody),
+      );
+
+      if (response.statusCode != 200) {
+        String msg = 'HTTP ${response.statusCode}';
+        try {
+          final err = jsonDecode(response.body);
+          final em = err['error']?['message'];
+          if (em is String && em.isNotEmpty) msg = 'Gemini vision API error: $em';
+        } catch (_) {}
+        throw Exception(msg);
+      }
+
+      final data = jsonDecode(response.body);
+      String? text = data['candidates']?[0]?['content']?['parts']?[0]?['text'];
+      
+      if (text == null || text.trim().isEmpty) {
+        final partsOut = data['candidates']?[0]?['content']?['parts'];
+        if (partsOut is List) {
+          for (final p in partsOut) {
+            if (p is Map && p['text'] is String && (p['text'] as String).trim().isNotEmpty) {
+              text = p['text'];
+              break;
+            }
+          }
+        }
+      }
+      
+      if (text == null || text.trim().isEmpty) {
+        throw Exception('Empty response from vision API');
+      }
+      
+      return text.trim();
+    } catch (e) {
+      _logError('_analyzeReportWithImage failed', e as Object?);
+      rethrow;
+    }
+  }
+
+  Future<String> _analyzeReportTextOnly(String prompt) async {
+    try {
+      final uri = Uri.parse('$_endpoint?key=$_apiKey');
+      
+      final requestBody = {
+        'contents': [
+          {
+            'parts': [
+              {'text': prompt}
+            ]
+          }
+        ],
+        'generationConfig': {
+          'temperature': 0.3,
+          'topK': 32,
+          'topP': 1,
+          'maxOutputTokens': 2048,
+        },
+        'safetySettings': [
+          {
+            'category': 'HARM_CATEGORY_HARASSMENT',
+            'threshold': 'BLOCK_MEDIUM_AND_ABOVE'
+          },
+          {
+            'category': 'HARM_CATEGORY_HATE_SPEECH',
+            'threshold': 'BLOCK_MEDIUM_AND_ABOVE'
+          },
+          {
+            'category': 'HARM_CATEGORY_SEXUALLY_EXPLICIT',
+            'threshold': 'BLOCK_MEDIUM_AND_ABOVE'
+          },
+          {
+            'category': 'HARM_CATEGORY_DANGEROUS_CONTENT',
+            'threshold': 'BLOCK_MEDIUM_AND_ABOVE'
+          }
+        ]
+      };
+
+      final response = await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(requestBody),
+      );
+
+      if (response.statusCode != 200) {
+        String msg = 'HTTP ${response.statusCode}';
+        try {
+          final err = jsonDecode(response.body);
+          final em = err['error']?['message'];
+          if (em is String && em.isNotEmpty) msg = 'Gemini API error: $em';
+        } catch (_) {}
+        throw Exception(msg);
+      }
+
+      final data = jsonDecode(response.body);
+      String? text = data['candidates']?[0]?['content']?['parts']?[0]?['text'];
+      
+      if (text == null || text.trim().isEmpty) {
+        throw Exception('Empty response from API');
+      }
+      
+      return text.trim();
+    } catch (e) {
+      _logError('_analyzeReportTextOnly failed', e as Object?);
+      rethrow;
+    }
+  }
+
+  /// Parse the response from medical report analysis
+  Map<String, dynamic> parseReportResponse(String response) {
+    try {
+      // Try to parse as JSON first
+      final jsonMatch = RegExp(r'\{[\s\S]*\}').firstMatch(response);
+      if (jsonMatch != null) {
+        final jsonStr = jsonMatch.group(0)!;
+        final parsed = jsonDecode(jsonStr);
+        if (parsed is Map<String, dynamic>) {
+          return parsed;
+        }
+      }
+    } catch (e) {
+      _logError('Failed to parse JSON response', e as Object?);
+    }
+
+    // Fallback: create a structured response from text
+    return {
+      'summary': _extractSection(response, 'summary') ?? 'Report analysis completed successfully',
+      'findings': _extractSection(response, 'findings') ?? 'No significant abnormalities detected',
+      'recommendations': _extractSection(response, 'recommendations') ?? 'Continue regular monitoring as advised by your healthcare provider',
+      'next_steps': _extractSection(response, 'next_steps') ?? 'Follow up with your doctor for any concerns',
+    };
+  }
+
+  String? _extractSection(String text, String sectionName) {
+    try {
+      // Look for JSON-like structure
+      final pattern = '"$sectionName"\\s*:\\s*"([^"]*)"';
+      final match = RegExp(pattern, caseSensitive: false).firstMatch(text);
+      if (match != null) {
+        return match.group(1);
+      }
+
+      // Look for markdown-style headers
+      final headerPattern = '##\\s*$sectionName\\s*\\n([^#]*)';
+      final headerMatch = RegExp(headerPattern, caseSensitive: false, multiLine: true).firstMatch(text);
+      if (headerMatch != null) {
+        return headerMatch.group(1)?.trim();
+      }
+
+      // Look for simple text patterns
+      final simplePattern = '$sectionName[\\s:]*([^\\n]*)';
+      final simpleMatch = RegExp(simplePattern, caseSensitive: false).firstMatch(text);
+      if (simpleMatch != null) {
+        return simpleMatch.group(1)?.trim();
+      }
+    } catch (e) {
+      _logError('Error extracting section $sectionName', e as Object?);
+    }
+    return null;
   }
 } 
 

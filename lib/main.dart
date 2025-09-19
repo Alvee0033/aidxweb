@@ -9,6 +9,7 @@ import 'package:aidx/services/notification_service.dart';
 import 'package:aidx/screens/splash_screen.dart';
 import 'package:aidx/utils/theme.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:aidx/utils/constants.dart';
 import 'package:aidx/screens/dashboard_screen.dart';
 import 'package:aidx/screens/auth/login_screen.dart';
@@ -55,8 +56,10 @@ final RouteObserver<ModalRoute<void>> routeObserver = RouteObserver<ModalRoute<v
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  WearOsChannel.init();
-  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+  if (!kIsWeb) {
+    WearOsChannel.init();
+    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+  }
   
   // Add debug output
   debugPrint('🚀 Starting app initialization...');
@@ -80,32 +83,17 @@ void main() async {
   try {
     // Initialize Firebase
     debugPrint('📱 Initializing Firebase...');
-    FirebaseApp? app;
-    
-    try {
-      // Try to get existing app first
-      app = Firebase.app();
+    FirebaseApp app;
+
+    // Prefer a safe, non-exception control flow especially for Web
+    if (Firebase.apps.isEmpty) {
+      app = await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+      debugPrint('✅ Firebase initialized successfully (cold start)');
+    } else {
+      app = Firebase.apps.first;
       debugPrint('ℹ️ Firebase already initialized, reusing existing instance');
-    } on FirebaseException catch (e) {
-      if (e.code != 'no-app') {
-        // Unexpected Firebase error, rethrow
-        rethrow;
-      }
-      // If no app exists, attempt to initialise a new one
-      try {
-        app = await Firebase.initializeApp(
-          options: DefaultFirebaseOptions.currentPlatform,
-        );
-        debugPrint('✅ Firebase initialized successfully (cold start)');
-      } on FirebaseException catch (e) {
-        if (e.code == 'duplicate-app') {
-          // Another isolate/thread initialised Firebase in the meantime – reuse it
-          debugPrint('ℹ️ Firebase duplicate-app detected, fetching existing instance');
-          app = Firebase.app();
-        } else {
-          rethrow; // Propagate other errors
-        }
-      }
     }
     
     // Start heavy services in the background to avoid blocking first frame
@@ -194,14 +182,16 @@ Future<void> _initializeHeavyServices() async {
     }
 
     // Set preferred orientations (not critical for first frame)
-    try {
-      await SystemChrome.setPreferredOrientations([
-        DeviceOrientation.portraitUp,
-        DeviceOrientation.portraitDown,
-      ]);
-      debugPrint('✅ Preferred orientations set');
-    } catch (e) {
-      debugPrint('⚠️ Error setting orientations: $e');
+    if (!kIsWeb) {
+      try {
+        await SystemChrome.setPreferredOrientations([
+          DeviceOrientation.portraitUp,
+          DeviceOrientation.portraitDown,
+        ]);
+        debugPrint('✅ Preferred orientations set');
+      } catch (e) {
+        debugPrint('⚠️ Error setting orientations: $e');
+      }
     }
 
     // Database initialization - run in background
@@ -295,15 +285,16 @@ class MyApp extends StatelessWidget {
             ChangeNotifierProvider<FirebaseService>.value(value: firebaseService),
             ChangeNotifierProvider<HealthProvider>(create: (_) => HealthProvider()),
             ChangeNotifierProvider<CommunityProvider>(create: (_) => CommunityProvider()),
-            ChangeNotifierProvider<AndroidWearableService>(
-              create: (_) {
-                final svc = AndroidWearableService();
-                // Initialize and attempt auto-reconnect in background
-                // ignore: unawaited_futures
-                svc.initialize().then((_) => svc.autoReconnect());
-                return svc;
-              },
-            ),
+            if (!kIsWeb)
+              ChangeNotifierProvider<AndroidWearableService>(
+                create: (_) {
+                  final svc = AndroidWearableService();
+                  // Initialize and attempt auto-reconnect in background
+                  // ignore: unawaited_futures
+                  svc.initialize().then((_) => svc.autoReconnect());
+                  return svc;
+                },
+              ),
             Provider<DatabaseService>(create: (_) => DatabaseService()),
             ChangeNotifierProvider<AppStateService>.value(value: appStateService),
             Provider<DataPersistenceService>.value(value: dataPersistenceService),

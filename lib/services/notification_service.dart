@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -62,7 +63,9 @@ class NotificationService {
       debugPrint('✅ FlutterLocalNotificationsPlugin initialized');
 
       // Create notification channel for Android
-      await _createNotificationChannel();
+      if (!kIsWeb) {
+        await _createNotificationChannel();
+      }
 
       _isInitialized = true;
       debugPrint('✅ Local notification service initialized successfully');
@@ -70,8 +73,12 @@ class NotificationService {
       // Start listening to auth changes and then watch chats when logged in
       _startAuthListener();
 
-      // Initialize FCM
-      await _initFcm();
+      // Initialize FCM (skip Web unless specifically handled)
+      if (!kIsWeb) {
+        await _initFcm();
+      } else {
+        debugPrint('ℹ️ Skipping FCM initialization on Web (not configured)');
+      }
 
       // Test if notifications work by checking pending notifications
       try {

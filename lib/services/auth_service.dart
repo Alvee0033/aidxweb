@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:aidx/services/database_init.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
@@ -10,9 +11,14 @@ class AuthService with ChangeNotifier {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   
-  // Configure GoogleSignIn with the correct client ID from google-services.json
+  // Configure GoogleSignIn. On Web, provide clientId via --dart-define or use meta tag fallback
   final GoogleSignIn _googleSignIn = GoogleSignIn(
     scopes: ['email', 'profile'],
+    clientId: kIsWeb
+        ? (const String.fromEnvironment('GOOGLE_WEB_CLIENT_ID').isNotEmpty
+            ? const String.fromEnvironment('GOOGLE_WEB_CLIENT_ID')
+            : null)
+        : null,
   );
   
   final DatabaseService _databaseService = DatabaseService();
@@ -27,54 +33,66 @@ class AuthService with ChangeNotifier {
     try {
       debugPrint('🔄 Starting Google Sign-In flow...');
       
-      // Attempt to sign out previous session to prevent token conflicts
-      await _googleSignIn.signOut();
-      await _auth.signOut();
+      User? user;
       
-      // Trigger the Google Sign-In flow with additional error handling
-      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn().timeout(
-        const Duration(seconds: 30),
-        onTimeout: () {
-          debugPrint('⏰ Google Sign-In timed out');
-          return null;
-        },
-      );
-      
-      if (googleUser == null) {
-        debugPrint('ℹ️ Google sign-in was cancelled or timed out');
-        return null;
-      }
-      
-      debugPrint('✅ Google account selected: ${googleUser.email}');
-      
-      // Obtain the auth details from the request with retry mechanism
-      GoogleSignInAuthentication? googleAuth;
-      for (int attempt = 1; attempt <= 3; attempt++) {
+      if (kIsWeb) {
+        // Web: Use Firebase Auth's popup flow (recommended)
         try {
-          googleAuth = await googleUser.authentication;
-          break;
-        } catch (e) {
-          debugPrint('⚠️ Token retrieval attempt $attempt failed: $e');
-          if (attempt == 3) rethrow;
-          await Future.delayed(Duration(seconds: attempt * 2));
+          final provider = GoogleAuthProvider();
+          provider.setCustomParameters({'prompt': 'select_account'});
+          final userCredential = await _auth.signInWithPopup(provider);
+          user = userCredential.user;
+        } catch (popupError) {
+          debugPrint('⚠️ signInWithPopup failed: $popupError, trying redirect...');
+          // As a fallback, try redirect flow
+          await _auth.signInWithRedirect(GoogleAuthProvider());
+          // After redirect, Firebase automatically completes sign-in on reload
+          return null;
         }
-      }
-      
-      if (googleAuth == null || googleAuth.accessToken == null || googleAuth.idToken == null) {
-        throw Exception('Invalid Google authentication tokens');
-      }
+      } else {
+        // Mobile/Desktop: Use google_sign_in flow
+        await _googleSignIn.signOut();
+        await _auth.signOut();
 
-      // Create a new credential
-      final credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
-      );
-      
-      debugPrint('✅ Created Firebase credential with tokens');
-      
-      // Sign in to Firebase with the Google credential
-      final userCredential = await _auth.signInWithCredential(credential);
-      final user = userCredential.user;
+        final GoogleSignInAccount? googleUser = await _googleSignIn.signIn().timeout(
+          const Duration(seconds: 30),
+          onTimeout: () {
+            debugPrint('⏰ Google Sign-In timed out');
+            return null;
+          },
+        );
+
+        if (googleUser == null) {
+          debugPrint('ℹ️ Google sign-in was cancelled or timed out');
+          return null;
+        }
+
+        debugPrint('✅ Google account selected: ${googleUser.email}');
+
+        GoogleSignInAuthentication? googleAuth;
+        for (int attempt = 1; attempt <= 3; attempt++) {
+          try {
+            googleAuth = await googleUser.authentication;
+            break;
+          } catch (e) {
+            debugPrint('⚠️ Token retrieval attempt $attempt failed: $e');
+            if (attempt == 3) rethrow;
+            await Future.delayed(Duration(seconds: attempt * 2));
+          }
+        }
+
+        if (googleAuth == null || googleAuth.accessToken == null || googleAuth.idToken == null) {
+          throw Exception('Invalid Google authentication tokens');
+        }
+
+        final credential = GoogleAuthProvider.credential(
+          accessToken: googleAuth.accessToken,
+          idToken: googleAuth.idToken,
+        );
+
+        final userCredential = await _auth.signInWithCredential(credential);
+        user = userCredential.user;
+      }
       
       debugPrint('✅ Firebase sign-in successful: ${user?.email}');
       

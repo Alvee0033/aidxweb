@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:ui';
 import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import '../utils/theme.dart';
 import '../services/firebase_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -101,6 +102,8 @@ class _BloodDonationScreenState extends State<BloodDonationScreen> {
 
   Future<void> _checkConnectivity() async {
     try {
+      // On web, skip dart:io lookup which is not supported; rely on browser network
+      if (kIsWeb) return;
       final result = await InternetAddress.lookup('google.com');
       if (result.isEmpty || result[0].rawAddress.isEmpty) {
         throw Exception('No internet connection');
@@ -682,6 +685,18 @@ class _BloodDonationScreenState extends State<BloodDonationScreen> {
 
   Future<bool> _ensureLocation() async {
     try {
+      if (kIsWeb) {
+        // Use low-power best effort on web, and handle lack of permissions gracefully
+        try {
+          _currentPosition = await Geolocator.getCurrentPosition(
+            desiredAccuracy: LocationAccuracy.low,
+          ).timeout(const Duration(seconds: 5));
+        } catch (_) {
+          return false;
+        }
+        return true;
+      }
+
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
         return false;
@@ -1959,7 +1974,7 @@ class _BloodDonationScreenState extends State<BloodDonationScreen> {
             final isNotCurrentUser = donor['userId'] != user.uid;
             // Decide location filter based on GPS toggle
             bool meetsLocation;
-            if (_useGpsRadius) {
+            if (_useGpsRadius && !kIsWeb) {
               if (_currentPosition != null && donor['latitude'] != null && donor['longitude'] != null) {
                 final distance = _distanceInKm(
                   _currentPosition!.latitude,

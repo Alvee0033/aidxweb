@@ -35,9 +35,10 @@ class SocialMediaService {
       final docRef = _firestore.collection('community_posts').doc();
       final postId = docRef.id;
       
-      // Upload image if available
+      // Handle image: prefer base64 for web, fallback to storage for files
       String? imageUrl;
-      if (post.imageUrl != null && post.imageUrl!.isNotEmpty) {
+      String? imageBase64 = post.imageBase64;
+      if ((imageBase64 == null || imageBase64.isEmpty) && post.imageUrl != null && post.imageUrl!.isNotEmpty) {
         final file = File(post.imageUrl!);
         if (await file.exists()) {
           imageUrl = await uploadImage(file, postId);
@@ -53,6 +54,7 @@ class SocialMediaService {
         userLocation: post.userLocation,
         content: post.content,
         imageUrl: imageUrl,
+        imageBase64: imageBase64,
         category: post.category,
         timestamp: post.timestamp,
         tags: post.tags,

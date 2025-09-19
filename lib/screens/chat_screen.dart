@@ -12,6 +12,7 @@ import 'dart:ui';
 import 'dart:async';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:aidx/utils/constants.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 enum AssistantState {
   greeting,
@@ -66,6 +67,9 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, 
   
   // Pause functionality
   bool _isPaused = false;
+  bool _pendingAutoListen = false;
+  String? _currentListenSessionId;
+  bool _inputHandledForSession = false;
   
   // Conversation context
   String _conversationContext = '';
@@ -499,6 +503,12 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, 
 
   Future<void> _checkMicPermission() async {
     try {
+      if (kIsWeb) {
+        setState(() {
+          _micPermissionGranted = true; // Browser will prompt separately; permission_handler not supported on web
+        });
+        return;
+      }
       var status = await Permission.microphone.status;
       if (!status.isGranted) {
         status = await Permission.microphone.request();
@@ -522,19 +532,37 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, 
   Future<void> _initTts({bool skipGreeting = false}) async {
     try {
       await _tts.setLanguage('en-US');
-      await _tts.setSpeechRate(0.425); // Half as fast as before
-      await _tts.setPitch(0.9); // Lower pitch to sound different from Google Assistant
-      await _tts.setVolume(0.8); // Slightly lower volume
+
+      // Use a faster baseline on Web (Chrome TTS is slower at the same rate)
+      if (kIsWeb) {
+        _currentSpeechRate = 1.0;
+        _currentPitch = 1.0;
+        _currentVolume = 1.0;
+      } else {
+        _currentSpeechRate = 0.425;
+        _currentPitch = 0.9;
+        _currentVolume = 0.8;
+      }
+
+      await _tts.setSpeechRate(_currentSpeechRate);
+      await _tts.setPitch(_currentPitch);
+      await _tts.setVolume(_currentVolume);
       
       // Try to set a different voice if available
       try {
         var voices = await _tts.getVoices;
         if (voices != null && voices.isNotEmpty) {
-          // Look for a female voice that's not the default Google Assistant voice
+          // Look for a brisker voice on Web; otherwise prefer a non-default female voice
           for (var voice in voices) {
-            if (voice['name'] != null && 
-                voice['name'].toString().toLowerCase().contains('female') &&
-                !voice['name'].toString().toLowerCase().contains('google')) {
+            final name = (voice['name'] ?? '').toString().toLowerCase();
+            if (kIsWeb) {
+              // Prefer a voice tagged as "fast"/"rapid" if available
+              if (name.contains('fast') || name.contains('rapid')) {
+                await _tts.setVoice({"name": voice['name'], "locale": voice['locale']});
+                break;
+              }
+            }
+            if (name.contains('female') && !name.contains('google')) {
               await _tts.setVoice({"name": voice['name'], "locale": voice['locale']});
               break;
             }
@@ -713,7 +741,10 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, 
       await _initTts(skipGreeting: true);
       if (!_ttsReady) return;
     }
-    
+    // Ensure recognizer is fully stopped before speaking to avoid feedback loops
+    try { await _speech.stop(); } catch (_) {}
+    setState(() { _isListening = false; });
+
     final startTime = DateTime.now();
     
     setState(() {
@@ -920,6 +951,11 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, 
     _sessionCount++;
     _sessionStartTime = DateTime.now();
 
+    // Start a new guarded listen session
+    _currentListenSessionId = DateTime.now().microsecondsSinceEpoch.toString();
+    _inputHandledForSession = false;
+    final String sessionId = _currentListenSessionId!;
+
     bool resultHandled = false;
 
     bool isFinalResult = false;
@@ -940,20 +976,25 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, 
     bool available = await _speech.initialize(
       onStatus: (status) async {
           if (debugMode) debugPrint('Speech status: $status');
+        // Ignore stale callbacks from previous sessions
+        if (sessionId != _currentListenSessionId) return;
         if (status == 'notListening' && !_isSpeaking && !_isProcessing && !_isResetting) {
           setState(() => _isListening = false);
-            if (!resultHandled && _liveTranscript.isNotEmpty) {
-              // If recognizer stopped but we have transcript, treat as final
-              _addMessage({'role': 'user', 'text': _liveTranscript});
-              _handleUserInput(_liveTranscript);
-              _liveTranscript = '';
-              resultHandled = true;
-            } else {
-              // No transcript – likely noise or premature stop; auto-restart safely
-              Future.delayed(Duration(milliseconds: 600), () {
-          if (_canListen()) _listen();
-              });
-            }
+          if (!_inputHandledForSession && !resultHandled && _liveTranscript.isNotEmpty) {
+            // If recognizer stopped but we have transcript, treat as final
+            _addMessage({'role': 'user', 'text': _liveTranscript});
+            _handleUserInput(_liveTranscript);
+            _liveTranscript = '';
+            resultHandled = true;
+            _inputHandledForSession = true;
+          } else if (!_pendingAutoListen) {
+            // Guard against rapid restart loops
+            _pendingAutoListen = true;
+            Future.delayed(Duration(milliseconds: 900), () {
+              _pendingAutoListen = false;
+              if (_canListen()) _listen();
+            });
+          }
         }
       },
       onError: (err) async {
@@ -993,6 +1034,8 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, 
       setState(() => _isListening = true);
         await _speech.listen(
           onResult: (val) {
+            // Ignore stale callbacks from previous sessions
+            if (sessionId != _currentListenSessionId) return;
             if (debugMode) debugPrint('Speech result: ${val.recognizedWords} (final: ${val.finalResult})');
             // Filter by adaptive confidence threshold
             if (!val.finalResult && val.confidence != null && val.confidence! < _confidenceThreshold) {
@@ -1004,6 +1047,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, 
               });
             }
             if (val.finalResult) {
+              if (_inputHandledForSession) return; // already handled this session
               if (val.confidence != null && val.confidence! < _confidenceThreshold) {
                 // low confidence final result, ignore and restart listening
                 _liveTranscript = '';
@@ -1025,6 +1069,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, 
                 _liveTranscript = '';
                 _addMessage({'role': 'user', 'text': _lastUserInput});
               });
+              _inputHandledForSession = true;
               _handleUserInput(_lastUserInput);
             }
           },

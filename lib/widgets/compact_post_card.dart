@@ -133,34 +133,56 @@ class CompactPostCard extends StatelessWidget {
             fontSize: Responsive.getFontSize(context, mobile: 14, tablet: 16, desktop: 18)
           ),
         ),
-        if (post.imageUrl != null) ...[
+        if (post.imageUrl != null || post.imageBase64 != null) ...[
           const SizedBox(height: 8),
           ClipRRect(
             borderRadius: Responsive.getBorderRadius(context),
-            child: Image.network(
-              post.imageUrl!,
-              height: Responsive.getImageHeight(context),
-              width: double.infinity,
-              fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) {
-                return Container(
-                  height: Responsive.getImageHeight(context),
-                  width: double.infinity,
-                  decoration: BoxDecoration(
-                    color: Colors.grey.withOpacity(0.3),
-                    borderRadius: Responsive.getBorderRadius(context),
-                  ),
-                  child: Icon(
-                    FeatherIcons.image,
-                    color: Colors.white,
-                    size: Responsive.getIconSize(context, mobile: 32, tablet: 40, desktop: 48),
-                  ),
-                );
-              },
-            ),
+            child: _buildImage(context),
           ),
         ],
       ],
+    );
+  }
+
+  Widget _buildImage(BuildContext context) {
+    final double height = Responsive.getImageHeight(context);
+    if (post.imageBase64 != null && post.imageBase64!.isNotEmpty) {
+      final String dataUrl = post.imageBase64!.startsWith('data:')
+          ? post.imageBase64!
+          : 'data:image/png;base64,${post.imageBase64!}';
+      return Image.network(
+        dataUrl,
+        height: height,
+        width: double.infinity,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stack) => _imageFallback(context),
+      );
+    }
+    if (post.imageUrl != null && post.imageUrl!.isNotEmpty) {
+      return Image.network(
+        post.imageUrl!,
+        height: height,
+        width: double.infinity,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stack) => _imageFallback(context),
+      );
+    }
+    return const SizedBox.shrink();
+  }
+
+  Widget _imageFallback(BuildContext context) {
+    return Container(
+      height: Responsive.getImageHeight(context),
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.grey.withOpacity(0.3),
+        borderRadius: Responsive.getBorderRadius(context),
+      ),
+      child: Icon(
+        FeatherIcons.image,
+        color: Colors.white,
+        size: Responsive.getIconSize(context, mobile: 32, tablet: 40, desktop: 48),
+      ),
     );
   }
 
