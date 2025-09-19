@@ -2387,8 +2387,22 @@ class _AISymptomScreenState extends State<AISymptomScreen> {
           // Read bytes (works on web and mobile)
           final bytes = await img.readAsBytes();
           
-          // Remove local size validation - let Gemini handle it
-          
+          // Validate size (< 4MB) for safer upload/analysis
+          if (bytes.lengthInBytes > 4 * 1024 * 1024) {
+            setState(() {
+              _pickedImage = null;
+              _imageBytes = null;
+              _imageMimeType = null;
+            });
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Image too large. Please select an image under 4MB.'),
+                backgroundColor: Colors.red,
+              ),
+            );
+            return;
+          }
+
           // Detect mime type: use provided, else infer from file name extension
           String? mime = img.mimeType;
           if (mime == null || mime.isEmpty) {
@@ -2456,16 +2470,17 @@ class _AISymptomScreenState extends State<AISymptomScreen> {
       _analysisResult = null;
     });
     try {
-      // Let Gemini handle all image validation and processing
       File? imageFile;
       if (!kIsWeb && _pickedImage != null) {
         imageFile = File(_pickedImage!.path);
         if (!imageFile.existsSync()) {
           throw Exception('Selected image file no longer exists');
         }
-        // Remove local file size validation - let Gemini handle it
+        final fileSize = await imageFile.length();
+        if (fileSize > 4 * 1024 * 1024) {
+          throw Exception('Image file is too large. Please use an image smaller than 4MB.');
+        }
       }
-      
       Map<String, dynamic>? vitals;
       if (_useLiveVitals) {
         final dbService = DatabaseService();
@@ -2518,10 +2533,17 @@ class _AISymptomScreenState extends State<AISymptomScreen> {
 
       analysisGender = _gender;
 
-      // Remove local mime type validation - let Gemini handle it
-      final mimeForAnalysis = _imageMimeType;
+      // Ensure mime type fallback on web if missing
+      final mimeForAnalysis = _imageMimeType == null || _imageMimeType!.isEmpty
+          ? (kIsWeb ? 'image/jpeg' : null)
+          : _imageMimeType;
 
-      // Send everything to Gemini - let it handle all validation and processing
+      print('🔍 Starting symptom analysis...');
+      print('📝 Description: $enrichedDesc');
+      print('👤 Age: $analysisAge, Gender: $analysisGender');
+      print('📊 Intensity: $_intensity, Duration: $_duration');
+      print('🖼️ Image attached: ${_pickedImage != null}, Image bytes: ${_imageBytes?.length ?? 0}');
+      
       final resText = await _geminiService.analyzeSymptoms(
         description: enrichedDesc,
         age: analysisAge,
@@ -2535,8 +2557,21 @@ class _AISymptomScreenState extends State<AISymptomScreen> {
         vitals: vitals,
       );
       
-      // Let Gemini handle all error responses
+      print('✅ Gemini response received: ${resText.length} characters');
+      // If the result is a user-friendly error string, show error and return
+      if (resText.startsWith('Sorry, the AI analysis could not be completed')) {
+        setState(() => _isAnalyzing = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(resText),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+      print('🔧 Parsing Gemini response...');
       final parsed = _geminiService.parseResponse(resText);
+      print('📋 Parsed result: $parsed');
       setState(() {
         _analysisResult = parsed;
         _isAnalyzing = false;
@@ -2950,8 +2985,22 @@ class _AISymptomScreenState extends State<AISymptomScreen> {
           // Read bytes (works on web and mobile)
           final bytes = await img.readAsBytes();
           
-          // Remove local size validation - let Gemini handle it
-          
+          // Validate size (< 4MB) for safer upload/analysis
+          if (bytes.lengthInBytes > 4 * 1024 * 1024) {
+            setState(() {
+              _reportImage = null;
+              _reportImageBytes = null;
+              _reportImageMimeType = null;
+            });
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Image too large. Please select an image under 4MB.'),
+                backgroundColor: Colors.red,
+              ),
+            );
+            return;
+          }
+
           // Detect mime type
           String? mime = img.mimeType;
           if (mime == null || mime.isEmpty) {
@@ -3019,14 +3068,16 @@ class _AISymptomScreenState extends State<AISymptomScreen> {
       _reportAnalysisResult = null;
     });
     try {
-      // Let Gemini handle all image validation and processing
       File? imageFile;
       if (!kIsWeb && _reportImage != null) {
         imageFile = File(_reportImage!.path);
         if (!imageFile.existsSync()) {
           throw Exception('Selected report image file no longer exists');
         }
-        // Remove local file size validation - let Gemini handle it
+        final fileSize = await imageFile.length();
+        if (fileSize > 4 * 1024 * 1024) {
+          throw Exception('Report image file is too large. Please use an image smaller than 4MB.');
+        }
       }
 
       // Enrich description with patient profile from Digital Health ID for accuracy
@@ -3068,10 +3119,11 @@ class _AISymptomScreenState extends State<AISymptomScreen> {
 
       analysisGender = _reportGender;
 
-      // Remove local mime type validation - let Gemini handle it
-      final mimeForAnalysis = _reportImageMimeType;
+      // Ensure mime type fallback on web if missing
+      final mimeForAnalysis = _reportImageMimeType == null || _reportImageMimeType!.isEmpty
+          ? (kIsWeb ? 'image/jpeg' : null)
+          : _reportImageMimeType;
 
-      // Send everything to Gemini - let it handle all validation and processing
       final resText = await _geminiService.analyzeMedicalReport(
         description: enrichedDesc,
         reportType: _reportType,
@@ -3083,7 +3135,18 @@ class _AISymptomScreenState extends State<AISymptomScreen> {
         imageMimeType: mimeForAnalysis,
       );
 
-      // Let Gemini handle all error responses
+      // If the result is a user-friendly error string, show error and return
+      if (resText.startsWith('Sorry, the AI analysis could not be completed')) {
+        setState(() => _isAnalyzingReport = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(resText),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
       final parsed = _geminiService.parseReportResponse(resText);
       setState(() {
         _reportAnalysisResult = parsed;

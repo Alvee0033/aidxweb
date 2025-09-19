@@ -41,6 +41,7 @@ class _DrugScreenState extends State<DrugScreen> with SingleTickerProviderStateM
   Future<void> _search() async {
     final name = _controller.text.trim();
     if (name.isEmpty) return;
+    debugPrint('Searching for drug: $name');
     setState(() {
       _loading = true;
       _error = null;
@@ -49,6 +50,7 @@ class _DrugScreenState extends State<DrugScreen> with SingleTickerProviderStateM
     });
     try {
       final info = await _geminiService.searchDrug(name, brief: true);
+      debugPrint('Drug search result: $info');
       if (info.containsKey('error')) {
         setState(() {
           _error = info['error'];
@@ -62,8 +64,9 @@ class _DrugScreenState extends State<DrugScreen> with SingleTickerProviderStateM
         _animController.forward(from: 0);
       }
     } catch (e) {
+      debugPrint('Error in drug search: $e');
       setState(() {
-        _error = 'Failed to fetch information.';
+        _error = 'Failed to fetch information: ${e.toString()}';
         _loading = false;
       });
     }
@@ -118,6 +121,7 @@ class _DrugScreenState extends State<DrugScreen> with SingleTickerProviderStateM
         _saveMessage = 'Failed to save medication: ${e.toString()}';
         _saving = false;
       });
+      debugPrint('Error saving medication: $e');
     }
   }
 

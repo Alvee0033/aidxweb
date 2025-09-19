@@ -256,7 +256,9 @@ RULES:
 - Use common medication names with brief dosages
 - MAX 2 remedies per category
 - Be extremely concise
-- Output ONLY JSON, no extra text''';
+- Output ONLY JSON, no extra text
+- For skin conditions like rash, chicken pox, etc., analyze the image carefully and provide specific medical conditions
+- Always return valid JSON format''';
 
     final uri = Uri.parse('$_endpoint?key=$_apiKey');
 
@@ -278,6 +280,7 @@ RULES:
           'data': base64Img,
         }
       });
+      debugPrint('Image added to request: ${imageBytes.length} bytes, mime: ${imageMimeType ?? 'image/jpeg'}');
     } else if (imageFile != null && imageFile.existsSync()) {
       try {
         final bytes = await imageFile.readAsBytes();
@@ -296,6 +299,7 @@ RULES:
             'data': base64Image,
           }
         });
+        debugPrint('Image file added to request: ${bytes.length} bytes, mime: $mimeType');
       } catch (e) {
         throw Exception('Error processing image: ${e.toString()}');
       }
@@ -374,9 +378,23 @@ RULES:
         
         // Validate response for medical relevance
         final cleanText = text.trim();
+        debugPrint('Gemini response: $cleanText');
+        
         if (cleanText == 'INVALID_INPUT') {
           return _defaultAnalysisText(intensity);
         }
+        
+        // Try to validate if it's proper JSON
+        try {
+          final jsonTest = jsonDecode(cleanText);
+          if (jsonTest is Map<String, dynamic>) {
+            debugPrint('Valid JSON response received');
+            return cleanText;
+          }
+        } catch (e) {
+          debugPrint('Response is not valid JSON, using as-is: $e');
+        }
+        
         // If validation fails, still return best-effort content; UI has robust parser with fallback
         return cleanText;
       } catch (e, st) {
@@ -1016,7 +1034,7 @@ $description
 
 Please provide your analysis in the following JSON format:
 {
-  "summary": "Brief 2-3 sentence summary of the report findings",
+  "summary": "Brief 2-3 sentence summary of the report findings",flutter ru 
   "findings": "Detailed explanation of what the report shows, including normal/abnormal values, patterns, or observations",
   "recommendations": "Specific medical recommendations based on the findings",
   "next_steps": "Clear next steps for the patient, including when to follow up with healthcare providers"
